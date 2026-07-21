@@ -1,0 +1,79 @@
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "assets/**"
+      - ".gitignore"
+      - "LICENSE"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build portable exe
+        run: npm run dist
+
+      - name: Verify build output
+        shell: bash
+        run: |
+          ls -la dist
+          test -f "dist/Waypoint.exe" || { echo "::error::dist/Waypoint.exe not found"; exit 1; }
+
+      - name: Compute short SHA
+        id: vars
+        shell: bash
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          tag="build-${{ steps.vars.outputs.sha_short }}"
+
+          # A re-run on the same commit would collide on an existing tag; replace it.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists, replacing it"
+            gh release delete "$tag" --yes --cleanup-tag
+          fi
+
+          gh release create "$tag" "dist/Waypoint.exe" \
+            --title "Waypoint (build-${{ steps.vars.outputs.sha_short }})" \
+            --notes "Automated portable build from commit ${{ github.sha }}."
+
+      - name: Prune old releases (keep latest 2)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          stale=$(gh release list --limit 100 --json tagName,createdAt \
+            --jq 'sort_by(.createdAt) | reverse | .[2:] | .[].tagName')
+          for t in $stale; do
+            echo "Deleting old release $t"
+            gh release delete "$t" --yes --cleanup-tag
+          done

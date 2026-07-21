@@ -19,6 +19,7 @@
   "build": {
     "appId": "com.osint.waypoint",
     "productName": "Waypoint",
+    "artifactName": "Waypoint.exe",
     "directories": {
       "output": "dist"
     },
