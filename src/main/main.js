@@ -2,6 +2,7 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { execFile } = require('child_process');
 const pythonEnv = require('./pythonEnv');
 
 // Installed at runtime into userData (writable even when the app itself is a
@@ -24,6 +25,18 @@ const ICON_FILE = () => {
 
 let mainWindow;
 const activeProcesses = new Set();
+
+// child.kill() on Windows (TerminateProcess) only kills the target PID, not
+// any helper/worker processes it may have spawned — those get orphaned and
+// keep running invisibly after the app quits. `taskkill /T` kills the whole
+// process tree rooted at that PID instead.
+function killProcessTree(proc) {
+  if (process.platform === 'win32' && proc.pid) {
+    execFile('taskkill', ['/PID', String(proc.pid), '/T', '/F'], () => {});
+  } else {
+    try { proc.kill(); } catch (e) { /* already dead */ }
+  }
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -50,9 +63,7 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  for (const proc of activeProcesses) {
-    try { proc.kill(); } catch (e) { /* already dead */ }
-  }
+  for (const proc of activeProcesses) killProcessTree(proc);
   if (process.platform !== 'darwin') app.quit();
 });
 
