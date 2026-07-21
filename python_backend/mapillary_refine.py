@@ -27,6 +27,19 @@ logger = logging.getLogger(__name__)
 MAPILLARY_IMAGES_URL = 'https://graph.mapillary.com/images'
 BBOX_DEG = 0.008  # Mapillary bbox search requires bbox < 0.01 deg square
 MAX_WORKERS = 20  # Mapillary's rate limit (10k/min) has huge headroom for this
+SEARCH_WORKERS = 64  # tile-scan requests are tiny (a few small JSON records each) and
+                      # purely round-trip-bound, not bandwidth-bound — far more
+                      # concurrency fits under Mapillary's rate limit than the
+                      # download phase, which is actually pulling image bytes.
+
+# One pooled session per process, reused across every tile query in a run:
+# requests.get() with no session opens a fresh TCP+TLS connection per call,
+# and with 1000+ tiles that handshake overhead dwarfs the actual response
+# time. A shared Session's connection pool lets urllib3 keep connections
+# alive and reuse them across threads instead.
+_search_session = requests.Session()
+_search_session.mount('https://', requests.adapters.HTTPAdapter(
+    pool_connections=SEARCH_WORKERS, pool_maxsize=SEARCH_WORKERS))
 
 
 def cluster_radius_km(cluster: dict, min_km: float = 3.0, max_km: float = 15.0) -> float:
@@ -66,7 +79,7 @@ def _query_tile(tile, token: str, per_tile_limit: int):
         'limit': per_tile_limit,
     }
     try:
-        resp = requests.get(MAPILLARY_IMAGES_URL, params=params, timeout=15)
+        resp = _search_session.get(MAPILLARY_IMAGES_URL, params=params, timeout=15)
         resp.raise_for_status()
         return resp.json().get('data', [])
     except Exception as e:
@@ -85,12 +98,12 @@ def search_nearby_images(lat: float, lon: float, radius_km: float, token: str,
     reporting alongside the download/verify phases rather than leaving the UI
     blank until the scan finishes."""
     tiles = _bbox_tiles(lat, lon, radius_km)
-    logger.info(f'Mapillary: scanning {len(tiles)} tiles within {radius_km:.1f}km of ({lat:.4f},{lon:.4f}) ({MAX_WORKERS} concurrent)...')
+    logger.info(f'Mapillary: scanning {len(tiles)} tiles within {radius_km:.1f}km of ({lat:.4f},{lon:.4f}) ({SEARCH_WORKERS} concurrent)...')
 
     seen_ids = set()
     results = []
     total_tiles = len(tiles)
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+    with ThreadPoolExecutor(max_workers=SEARCH_WORKERS) as pool:
         futures = [pool.submit(_query_tile, t, token, per_tile_limit) for t in tiles]
         for i, future in enumerate(as_completed(futures), 1):
             if on_progress:

@@ -319,8 +319,8 @@ input[type=number].input { width: 120px; }
 .step.skipped .step-name { color: var(--muted); }
 
 .step-sub { grid-column: 2 / -1; margin-top: 8px; display: flex; align-items: center; gap: 10px; }
-.step-sub .track { height: 5px; }
-.step-sub .step-meta { min-width: 8.5rem; }
+.step-sub .track { height: 5px; flex: 1 1 auto; width: auto; }
+.step-sub .step-meta { flex: 0 0 auto; white-space: nowrap; min-width: 0; }
 
 /* ---------- Progress ---------- */
 .track { height: 8px; background: var(--surface-3); border-radius: 6px; overflow: hidden; width: 100%; }
