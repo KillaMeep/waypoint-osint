@@ -1,5 +1,5 @@
 /* ============================================================
-   Geolocator — clean neutral product theme (light + dark)
+   Geolocator: clean neutral product theme (light + dark)
    ============================================================ */
 
 :root {
@@ -255,7 +255,7 @@ a:hover { text-decoration: underline; }
   border: 1px solid var(--border-strong); border-radius: 50%;
   font-size: .64rem; color: var(--faint); cursor: help; vertical-align: middle;
 }
-/* Self-rendered tooltip, not the native `title` attribute — Electron/Chromium's
+/* Self-rendered tooltip, not the native `title` attribute: Electron/Chromium's
    built-in title tooltip is inconsistent (delayed, sometimes never appears). */
 .field-note::after {
   content: attr(data-tip);
@@ -336,14 +336,6 @@ input[type=number].input { width: 120px; }
 .step.failed .step-ico { color: var(--bad); }
 .step.skipped .step-ico { color: var(--warn); }
 .step.skipped .step-name { color: var(--muted); }
-
-.step-sub { grid-column: 2 / -1; margin-top: 8px; display: flex; align-items: center; gap: 10px; }
-.step-sub .track { height: 5px; flex: 1 1 auto; width: auto; }
-.step-sub .step-meta { flex: 0 0 auto; white-space: nowrap; min-width: 0; }
-/* No easing here: these fire many times a second (per-tile/per-image
-   progress), and a .3s transition restarting on every update never lets the
-   fill visually catch up to its real value — it always looks a step behind. */
-.step-sub .progress-fill { transition: none; }
 
 /* ---------- Progress ---------- */
 .track { height: 8px; background: var(--surface-3); border-radius: 6px; overflow: hidden; width: 100%; }

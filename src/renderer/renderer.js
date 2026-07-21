@@ -1,7 +1,7 @@
 'use strict';
 
 /* ============================================================
-   Geolocator renderer — tabbed views (Analyze / Results / Refine)
+   Geolocator renderer: tabbed views (Analyze / Results / Refine)
    The pipeline event contract is fixed by run_pipeline.py.
    ============================================================ */
 
@@ -34,7 +34,7 @@ let currentClusterIndex = 0;
 let resultLatLngs = [];   // candidate + match points, for fitting the results map
 let refineLatLngs = [];   // refine point + zoom matches, for fitting the refine map
 let resultsFitted = false;
-let pipelineBusy = false;  // a backend process is running — block launching another
+let pipelineBusy = false;  // a backend process is running, block launching another
 let activeRunKind = null;  // 'full' | 'refine'
 
 // Only one pipeline may run at a time (each loads the model into VRAM).
@@ -140,7 +140,7 @@ $('setupStartBtn').addEventListener('click', async () => {
   const result = await window.api.runEnvSetup();
   btn.classList.remove('busy'); stopCrawl();
   if (result.ok) { setupBar(100, 'Setup complete'); setTimeout(() => showScreen('mainScreen'), 700); }
-  else { setupAppend(`Setup failed: ${result.error}`); $('setupStatus').textContent = 'Setup failed — see details.'; btn.disabled = false; }
+  else { setupAppend(`Setup failed: ${result.error}`); $('setupStatus').textContent = 'Setup failed, see details.'; btn.disabled = false; }
 });
 window.api.onEnvProgress((payload) => {
   if (payload.event === 'log') {
@@ -150,7 +150,7 @@ window.api.onEnvProgress((payload) => {
   else if (payload.event === 'stage_done') {
     setupAppend(`${payload.stage} done.`);
     if (payload.stage === 'python_env' && 'gpu_detected' in payload)
-      setupAppend(payload.gpu_detected ? 'NVIDIA GPU detected.' : 'No GPU detected — CPU mode (slower).');
+      setupAppend(payload.gpu_detected ? 'NVIDIA GPU detected.' : 'No GPU detected, CPU mode (slower).');
   }
 });
 
@@ -235,7 +235,7 @@ function fitBounds(m, latlngs) {
 }
 function addCandidateMarker(i, c) {
   const m = L.marker([c.lat, c.lon], { icon: candIcon(i + 1, i === 0), zIndexOffset: 1000 - i })
-    .bindTooltip(`Candidate ${i + 1} — ${(c.weight * 100).toFixed(0)}%`, { direction: 'top', offset: [0, -22] });
+    .bindTooltip(`Candidate ${i + 1}: ${(c.weight * 100).toFixed(0)}%`, { direction: 'top', offset: [0, -22] });
   m.on('click', () => refineCandidate(i, c));
   m.addTo(layers.results.candidates);
   resultLatLngs.push([c.lat, c.lon]);
@@ -301,7 +301,7 @@ function markStep(stage, state, metaText) {
   const isMain = !stage.startsWith('zoom_');
   if (isMain && (state === 'done' || state === 'failed' || state === 'skipped')) {
     overallStages.completed.add(stage);
-    const sub = li.querySelector('.step-sub'); if (sub) sub.remove();
+    if (metaText === undefined) li.querySelector('.step-meta').textContent = '';
     updateOverallProgress();
   }
 }
@@ -332,17 +332,8 @@ function updateStepProgress(stage, phase, completed, total) {
   const doneSince = completed - startCompleted;
   const rate = doneSince > 0 ? doneSince / elapsed : 0;
   const eta = rate > 0 ? (total - completed) / rate : NaN;
-  let sub = li.querySelector('.step-sub');
-  if (!sub) {
-    sub = document.createElement('span');
-    sub.className = 'step-sub';
-    sub.innerHTML = '<span class="track"><span class="progress-fill"></span></span><span class="step-meta"></span>';
-    li.appendChild(sub);
-  }
-  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-  sub.querySelector('.progress-fill').style.width = `${pct}%`;
   const etaText = formatEta(eta) ? ` · ETA ${formatEta(eta)}` : '';
-  sub.querySelector('.step-meta').textContent = `${phase} ${completed}/${total}${etaText}`;
+  li.querySelector('.step-meta').textContent = `${phase} ${completed}/${total}${etaText}`;
 }
 
 /* ============================================================ Developer log */
@@ -573,7 +564,7 @@ window.api.onPipelineEvent((payload) => {
       }
       break;
     case 'exit':
-      // Definitive terminal signal (normal exit or crash) — release the lock.
+      // Definitive terminal signal (normal exit or crash). Release the lock.
       if (activeRunKind === 'refine' && maps.refine && refineLatLngs.length) fitBounds(maps.refine, refineLatLngs);
       setBusy(false);
       activeRunKind = null;

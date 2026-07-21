@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Google Street View retrieval-refinement — free, no API key, no billing account.
+Google Street View retrieval-refinement. Free, no API key, no billing account.
 
 Reuses the technique from netryx-astra-v2's own indexer (this toolkit's
 tools/netryx-astra-v2, see its test_super.py): Google Maps' internal,
@@ -13,7 +13,7 @@ Unlike Mapillary/KartaView (crowdsourced, patchy suburban coverage), Google
 actually drove and photographed nearly every residential street, so this is
 the fix for the "moderate similarity, wrong match" problem seen in suburban
 testing. Also unlike Mapillary's blind area-grid tiling, panoramas only exist
-along roads — so this samples points along real OSM road geometry near the
+along roads, so this samples points along real OSM road geometry near the
 candidate (reusing sun_refine's Overpass query) instead of scanning the whole
 2D area, which is both cheaper and far more likely to hit real coverage.
 """
@@ -55,11 +55,11 @@ def _haversine_m(lat1, lon1, lat2, lon2) -> float:
 
 def get_road_sample_points(lat: float, lon: float, radius_km: float, spacing_m: float = ROAD_SAMPLE_SPACING_M, max_points: int = 400):
     """Fetch nearby road geometry from OpenStreetMap and sample points along it
-    every spacing_m meters — panoramas only exist along roads, so this is a far
+    every spacing_m meters. Panoramas only exist along roads, so this is a far
     smaller and more useful search set than scanning the whole 2D area.
 
     A wide-radius `around` query can be too expensive for the free Overpass
-    instances (504 Gateway Timeout) regardless of retries/mirrors — retrying
+    instances (504 Gateway Timeout) regardless of retries/mirrors: retrying
     the identical query just repeats the same timeout, so on failure this
     shrinks the radius instead and tries again, down to a floor."""
     data = None
@@ -106,7 +106,8 @@ def _query_panoids(lat: float, lon: float):
         resp = requests.get(PANOIDS_URL.format(lat=lat, lon=lon), timeout=10)
         resp.raise_for_status()
         text = resp.text
-    except Exception:
+    except Exception as e:
+        logger.debug(f'Google SV panoid query failed for ({lat:.5f},{lon:.5f}): {e}')
         return []
 
     matches = re.findall(r'"([A-Za-z0-9_-]{22})"', text)
@@ -125,7 +126,7 @@ def search_panoramas(lat: float, lon: float, radius_km: float, max_images: int =
     """Find nearby Street View panorama IDs by sampling points along real roads.
 
     on_progress(completed, total), if given, is called after each sample point
-    finishes probing — same rationale as Mapillary's tile-scan progress."""
+    finishes probing, same rationale as Mapillary's tile-scan progress."""
     sample_points = get_road_sample_points(lat, lon, radius_km)
     if not sample_points:
         logger.warning('Google SV: no road geometry found nearby, cannot sample panoids.')
@@ -158,7 +159,8 @@ def _download_tile(x, y, panoid):
             resp = requests.get(url, headers=TILE_HEADERS, timeout=10)
             if resp.status_code == 200:
                 return x, y, resp.content
-        except Exception:
+        except Exception as e:
+            logger.debug(f'Google SV tile ({x},{y}) for {panoid} failed: {e}')
             continue
     return x, y, None
 
@@ -182,7 +184,8 @@ def download_panorama(panoid: str):
         try:
             tile_img = Image.open(io.BytesIO(data)).convert('RGB')
             pano.paste(tile_img, (x * TILE_SIZE, y * TILE_SIZE))
-        except Exception:
+        except Exception as e:
+            logger.debug(f'Panorama tile ({x},{y}) decode failed: {e}')
             continue
     return pano
 
@@ -219,7 +222,7 @@ def refine_with_google_sv(pipeline, image_path: str, cluster: dict,
                            verify: bool = True, verify_top_n: int = 15, on_progress=None):
     """Same retrieval-refinement idea as mapillary_refine, but sourcing real
     photos from Google's own Street View coverage instead of crowdsourced
-    platforms — fixes the suburban coverage gap Mapillary has.
+    platforms. Fixes the suburban coverage gap Mapillary has.
 
     verify: if True, re-scores the top verify_top_n by-similarity candidates
     with DISK+LightGlue geometric matching (see verify_utils).

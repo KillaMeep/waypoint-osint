@@ -18,7 +18,7 @@ instead of waiting on one big blocking call. Two modes:
         an explicit point (typically the best match from a prior "one" run).
 
 All stdout lines are JSON: {"event": "...", ...}. Anything unparseable on
-stdout is a bug, not log noise — all logging goes to stderr instead.
+stdout is a bug, not log noise. All logging goes to stderr instead.
 """
 import argparse
 import json
@@ -40,7 +40,7 @@ def emit(event: str, **kwargs):
 
 def _progress_emitter(stage):
     """Returns an on_progress(phase, completed, total) callback that emits
-    NDJSON 'progress' events — the slow parts of each retrieval stage
+    NDJSON 'progress' events. The slow parts of each retrieval stage
     (downloading dozens-to-hundreds of images, then verifying them) are where
     a real percentage + ETA matters most, not a static spinner."""
     def _cb(phase, completed, total):

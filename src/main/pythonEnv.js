@@ -6,7 +6,7 @@ const { spawn } = require('child_process');
 const extractZip = require('extract-zip');
 
 // uv manages the Python interpreter itself (no system Python required) and
-// is much faster than pip — same tool already used throughout this OSINT
+// is much faster than pip, same tool already used throughout this OSINT
 // toolkit's own setup (F:\!!OSINT\tools\PLONK). This replaces an earlier
 // approach that manually downloaded the Windows embeddable Python zip and
 // bootstrapped pip by hand; uv does all of that more reliably in one tool.
@@ -108,7 +108,7 @@ async function installEnv(resourcesDir, onLog) {
 
   onLog('Checking for an NVIDIA GPU...');
   const hasGpu = await detectGpu(onLog);
-  onLog(hasGpu ? 'NVIDIA GPU detected — installing CUDA-enabled torch.' : 'No NVIDIA GPU detected — installing CPU-only torch (inference will be slower).');
+  onLog(hasGpu ? 'NVIDIA GPU detected, installing CUDA-enabled torch.' : 'No NVIDIA GPU detected, installing CPU-only torch (inference will be slower).');
 
   const torchArgs = ['pip', 'install', '--python', p.pythonExe, 'torch', 'torchvision'];
   if (hasGpu) torchArgs.push('--index-url', CUDA_TORCH_INDEX);

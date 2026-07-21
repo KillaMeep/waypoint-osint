@@ -29,7 +29,7 @@ BBOX_DEG = 0.008  # Mapillary bbox search requires bbox < 0.01 deg square
 MAX_WORKERS = 20  # Mapillary's rate limit (10k/min) has huge headroom for this
 SEARCH_WORKERS = 256  # tile-scan requests are tiny (a few small JSON records each) and
                        # purely round-trip-bound, not bandwidth-bound. 128 workers already
-                       # got a ~1.5k-tile scan down to ~30s (~50 req/s) — still well under
+                       # got a ~1.5k-tile scan down to ~30s (~50 req/s), still well under
                        # Mapillary's 10k/min (~166 req/s) limit, so there's headroom to push
                        # further. Stopped short of 4x/512 here: if per-request latency drops
                        # as concurrency rises, sustained throughput could approach the rate
@@ -48,7 +48,7 @@ _search_session.mount('https://', requests.adapters.HTTPAdapter(
 
 def cluster_radius_km(cluster: dict, min_km: float = 3.0, max_km: float = 15.0) -> float:
     """Size the search radius from PLONK's own reported spread for this cluster,
-    instead of a fixed guess — a tight cluster gets a tight search, a wide/uncertain
+    instead of a fixed guess: a tight cluster gets a tight search, a wide/uncertain
     cluster gets a wider one (capped, since cost scales with area)."""
     lat_km = cluster.get('lat_std', 0) * 111.0
     lon_km = cluster.get('lon_std', 0) * 111.0 * max(np.cos(np.radians(cluster['lat'])), 0.1)
@@ -94,11 +94,11 @@ def _query_tile(tile, token: str, per_tile_limit: int):
 def search_nearby_images(lat: float, lon: float, radius_km: float, token: str,
                           per_tile_limit: int = 5, max_images: int = 150, on_progress=None):
     """Query Mapillary for real street-level photos within radius_km of a point.
-    Tile queries run concurrently — Mapillary's rate limit (10k/min) has plenty
+    Tile queries run concurrently: Mapillary's rate limit (10k/min) has plenty
     of headroom, and serial per-tile requests don't scale to wider radii.
 
-    on_progress(completed, total), if given, is called after each tile finishes
-    — with wide radii this can be 1000+ tiles and take a while, so it's worth
+    on_progress(completed, total), if given, is called after each tile finishes.
+    With wide radii this can be 1000+ tiles and take a while, so it's worth
     reporting alongside the download/verify phases rather than leaving the UI
     blank until the scan finishes."""
     tiles = _bbox_tiles(lat, lon, radius_km)
@@ -141,7 +141,7 @@ def _download_all(candidates: list, on_progress=None):
     (GPU-bound, and PLONK's embedder doesn't actually batch internally).
 
     on_progress(completed, total), if given, is called after each download
-    completes — this is the slow part of the stage (network-bound, can take
+    completes. This is the slow part of the stage (network-bound, can take
     minutes for 150 images), so it's the most useful place for a UI to show
     real percentage progress rather than an indefinite spinner."""
     images = {}
@@ -175,12 +175,12 @@ def refine_with_retrieval(pipeline, image_path: str, cluster: dict, token: str,
     Returns a list of top matches (each with similarity, coords, thumb/page URLs).
 
     radius_km: if None, auto-sized from the cluster's own reported spread
-    (cluster_radius_km) instead of a fixed guess — searching a fixed 3km
+    (cluster_radius_km) instead of a fixed guess: searching a fixed 3km
     radius around a cluster centroid that's itself only accurate to tens of
     km means the true spot may not even be inside the search area.
 
     verify: if True, re-scores the top verify_top_n by-similarity candidates
-    with DISK+LightGlue geometric matching (see verify_utils) — embedding
+    with DISK+LightGlue geometric matching (see verify_utils). Embedding
     cosine similarity alone can't reliably tell "same street" from "similar-
     looking street," geometric inlier count can.
 

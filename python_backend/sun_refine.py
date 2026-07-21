@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Fully automated sun-position refinement for PLONK candidate clusters.
-No timestamp input required — everything is estimated from the image itself:
+No timestamp input required, everything is estimated from the image itself:
 
 1. Season estimate: vegetation/ground color (green/brown/white) in the lower
    portion of the frame narrows the plausible time-of-year window.
@@ -16,7 +16,7 @@ No timestamp input required — everything is estimated from the image itself:
    lowest angular error becomes that candidate's plausibility score.
 
 This is a plausibility re-ranker for PLONK's existing candidates, not an
-independent solver — treat close scores as "can't distinguish," and a
+independent solver. Treat close scores as "can't distinguish," and a
 missing/low-confidence season or golden-hour read means the sun evidence for
 that candidate is weak and shouldn't override PLONK's own cluster weight.
 """
@@ -185,8 +185,8 @@ def best_match_for_candidate(lat: float, lon: float, sample_dates: list, road_be
     for d in sample_dates:
         try:
             events = sun_events(observer, date=d)
-        except Exception:
-            continue
+        except ValueError:
+            continue  # astral raises this for polar day/night (no sunrise/sunset that date)
         for event_name in ('sunrise', 'sunset'):
             t = events.get(event_name)
             if t is None:
@@ -216,19 +216,19 @@ def refine_clusters(clusters: list, image_path: str, fov_deg: float = 65.0):
     logger.info(f'Golden-hour estimate: {is_golden} (confidence {golden_conf})')
 
     if offset_deg is None:
-        logger.warning('No bright sky region detected — skipping sun-based refinement.')
+        logger.warning('No bright sky region detected, skipping sun-based refinement.')
         return clusters, None
     if not is_golden:
-        logger.warning('Image does not look like a sunrise/sunset shot — sun-bearing refinement is unreliable here, skipping.')
+        logger.warning('Image does not look like a sunrise/sunset shot, sun-bearing refinement is unreliable here, skipping.')
         return clusters, None
 
     logger.info(f'Estimated sun/glow bearing offset from center: {offset_deg:+.1f}° (confidence {offset_conf:.2f}, assumed FOV {fov_deg}°)')
 
-    # NOTE: we deliberately do NOT re-sort clusters by sun_match_error. With a
+    # We deliberately do NOT re-sort clusters by sun_match_error. With a
     # multi-month date sweep x every nearby road bearing (and its reciprocal)
     # as free parameters, this search is overparameterized enough that it will
     # usually find *some* combo that fits near-perfectly, even for a wrong
-    # candidate — a low error is weak confirming evidence. A HIGH error is the
+    # candidate: a low error is weak confirming evidence. A HIGH error is the
     # informative case: it means no plausible date/heading explains the
     # observed sun position there, which is real evidence against that
     # candidate. Keep PLONK's own weight as the primary ranking signal.

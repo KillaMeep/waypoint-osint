@@ -27,7 +27,7 @@ let mainWindow;
 const activeProcesses = new Set();
 
 // child.kill() on Windows (TerminateProcess) only kills the target PID, not
-// any helper/worker processes it may have spawned — those get orphaned and
+// any helper/worker processes it may have spawned. Those get orphaned and
 // keep running invisibly after the app quits. `taskkill /T` kills the whole
 // process tree rooted at that PID instead.
 function killProcessTree(proc) {

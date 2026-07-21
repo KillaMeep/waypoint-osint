@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Geometric match verification via DISK + LightGlue (Kornia) — a lightweight,
+Geometric match verification via DISK + LightGlue (Kornia). A lightweight,
 no-index-build alternative to netryx-astra's MASt3R stage. Given a short list
 of visually-similar candidates (already narrowed by StreetCLIP cosine
 similarity in mapillary_refine/google_sv_refine), this re-scores them by
 actual feature-point geometric consensus (inlier count after RANSAC), which
-is a much stronger signal than embedding similarity alone — two suburban
+is a much stronger signal than embedding similarity alone: two suburban
 streets can "look similar" in embedding space while sharing zero real
 matchable structure.
 """
@@ -36,7 +36,7 @@ def _get_models():
     if _disk is None:
         # kornia's LightGlue loader does a raw print() straight to stdout,
         # which would corrupt an NDJSON stdout protocol (as used by the
-        # Geolocator GUI's Electron<->Python bridge) — redirect it away.
+        # Geolocator GUI's Electron<->Python bridge). Redirect it away.
         with contextlib.redirect_stdout(io.StringIO()):
             _disk = KF.DISK.from_pretrained('depth').to(_device).eval()
             _matcher = KF.LightGlueMatcher('disk').to(_device).eval()
@@ -96,11 +96,11 @@ def verify_candidates(target_image_path: str, candidates: list, image_key: str =
 
     Adds 'inliers' and 'total_matches' to each candidate dict, in place, and
     returns candidates re-sorted by inlier count (real geometric consensus is
-    NOT overparameterized the way the sun-refine heuristic was — a high
+    NOT overparameterized the way the sun-refine heuristic was: a high
     inlier count is strong evidence, unlike a lucky low-error date/heading fit).
 
     on_progress(completed, total), if given, is called after each candidate
-    is checked — DISK+LightGlue matching is GPU work, not slow per-pair, but
+    is checked. DISK+LightGlue matching is GPU work, not slow per-pair, but
     a batch of 100+ candidates still takes real wall-clock time worth showing."""
     target_img = Image.open(target_image_path).convert('RGB')
     to_check = candidates[:top_k] if top_k else candidates

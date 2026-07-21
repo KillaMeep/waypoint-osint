@@ -52,7 +52,7 @@
       <div class="card card-danger">
         <div class="card-head">
           <h2 class="card-title">Python environment</h2>
-          <p class="card-sub">Removes the app's downloaded Python runtime and every installed package (uv, the interpreter, PyTorch). Use this only if setup got into a bad state — the app walks through first-run setup again next launch.</p>
+          <p class="card-sub">Removes the app's downloaded Python runtime and every installed package (uv, the interpreter, PyTorch). Use this only if setup got into a bad state, the app walks through first-run setup again next launch.</p>
         </div>
         <div class="card-actions">
           <button id="purgeEnvBtn" class="btn btn-danger">Purge Python install</button>
@@ -86,7 +86,7 @@
       <section id="view-analyze" class="view scroll is-active">
         <div class="shell">
           <div class="card">
-            <div class="card-head"><h2 class="card-title">Select an image</h2><p class="card-sub">Pick a photo taken outdoors — street, skyline, or landscape works best.</p></div>
+            <div class="card-head"><h2 class="card-title">Select an image</h2><p class="card-sub">Pick a photo taken outdoors: street, skyline, or landscape works best.</p></div>
             <div class="picker">
               <div id="imageDrop" class="dropzone" role="button" tabindex="0">
                 <div id="imageEmpty" class="dropzone-empty">
@@ -99,7 +99,7 @@
                 <button id="selectImageBtn" class="btn btn-secondary">Choose photo…</button>
                 <div class="params">
                   <label class="field field-inline"><span class="field-label">Samples <span class="field-note" tabindex="0" data-tip="More samples = broader coarse search, slower">?</span></span><input type="number" id="numSamples" class="input" value="512" min="64" step="64" /></label>
-                  <label class="field field-inline"><span class="field-label">Runs <span class="field-note" tabindex="0" data-tip="Repeat the coarse locate and merge — more runs = steadier candidates">?</span></span><input type="number" id="numRuns" class="input" value="3" min="1" max="10" /></label>
+                  <label class="field field-inline"><span class="field-label">Runs <span class="field-note" tabindex="0" data-tip="Repeat the coarse locate and merge, more runs = steadier candidates">?</span></span><input type="number" id="numRuns" class="input" value="3" min="1" max="10" /></label>
                 </div>
                 <button id="runOneBtn" class="btn btn-primary btn-lg" disabled><span class="btn-label">Run full pipeline</span></button>
               </div>
@@ -115,7 +115,7 @@
             <ul id="stepList" class="steps"></ul>
           </div>
 
-          <details class="raw card card-raw"><summary>Developer log — raw pipeline events</summary><div id="pipelineLog" class="log"></div></details>
+          <details class="raw card card-raw"><summary>Developer log: raw pipeline events</summary><div id="pipelineLog" class="log"></div></details>
         </div>
       </section>
 
@@ -153,7 +153,7 @@
                 <button id="runZoomBtn" class="btn btn-primary" disabled>Refine here</button>
               </div>
               <ul id="zoomSteps" class="steps steps-compact"></ul>
-              <details class="raw"><summary>Developer log — raw pipeline events</summary><div id="zoomLog" class="log"></div></details>
+              <details class="raw"><summary>Developer log: raw pipeline events</summary><div id="zoomLog" class="log"></div></details>
             </div>
             <div id="zoomResults" class="candidates"></div>
           </div>

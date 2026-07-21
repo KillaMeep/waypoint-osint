@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shared, resilient Overpass API querying — retries with backoff and falls
+"""Shared, resilient Overpass API querying. Retries with backoff and falls
 back across public mirrors, since the free overpass-api.de instance rate-limits
 (429) or times out (504) under back-to-back queries, which multiple refinement
 stages in this toolchain (sun_refine, google_sv_refine) both hit per run."""

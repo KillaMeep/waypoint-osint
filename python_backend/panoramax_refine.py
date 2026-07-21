@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Panoramax retrieval-refinement — free, open, no API key (STAC-based street-level
+Panoramax retrieval-refinement. Free, open, no API key (STAC-based street-level
 imagery, https://panoramax.fr). Same retrieval-refinement pattern as
 mapillary_refine/google_sv_refine: pull real nearby photos, rank by StreetCLIP
 embedding similarity, then geometrically verify the top candidates.
 
 Unlike Mapillary, a single bbox query covers the whole search radius directly
-(no need to tile — Panoramax's STAC /search endpoint doesn't cap bbox size the
+(no need to tile: Panoramax's STAC /search endpoint doesn't cap bbox size the
 way Mapillary's Images API does).
 """
 import logging
