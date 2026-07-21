@@ -1,0 +1,44 @@
+<svg width="1336" height="148" viewBox="0 0 1336 148" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pipeline: photo to PLONK coarse locate to sun and season plausibility to retrieval refinement to geometric verification to ranked candidates on the map"><defs><marker id="arrow-l" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L8,4 L0,8 Z" fill="#2f6feb"/></marker></defs><line x1="216" y1="74.0" x2="250" y2="74.0" stroke="#2f6feb" stroke-width="1.6" marker-end="url(#arrow-l)"/><line x1="432" y1="74.0" x2="466" y2="74.0" stroke="#2f6feb" stroke-width="1.6" marker-end="url(#arrow-l)"/><line x1="648" y1="74.0" x2="682" y2="74.0" stroke="#2f6feb" stroke-width="1.6" marker-end="url(#arrow-l)"/><line x1="864" y1="74.0" x2="898" y2="74.0" stroke="#2f6feb" stroke-width="1.6" marker-end="url(#arrow-l)"/><line x1="1080" y1="74.0" x2="1114" y2="74.0" stroke="#2f6feb" stroke-width="1.6" marker-end="url(#arrow-l)"/><rect x="40" y="40" width="176" height="68" rx="12" fill="#f3f5f8" stroke="#d3d9e2" stroke-width="1.3"/><g transform="translate(128.0,59)">
+      <rect x="-9" y="-6" width="18" height="13" rx="2.2" fill="none" stroke="#1b2028" stroke-width="1.4"/>
+      <circle cx="-3.5" cy="-2" r="1.5" fill="#1b2028"/>
+      <path d="M-8 4.5 L-3 -0.5 L0.5 3 L3 0.5 L8 5" fill="none" stroke="#1b2028" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </g><text x="128.0" y="92" text-anchor="middle" font-family="Segoe UI, -apple-system, sans-serif" font-size="13" font-weight="600" fill="#1b2028">Photo</text><rect x="256" y="40" width="176" height="68" rx="12" fill="#f3f5f8" stroke="#d3d9e2" stroke-width="1.3"/><g transform="translate(344.0,59)">
+      <circle cx="0" cy="0" r="7.5" fill="none" stroke="#1b2028" stroke-width="1.4"/>
+      <circle cx="0" cy="0" r="1.7" fill="#1b2028"/>
+      <g stroke="#1b2028" stroke-width="1.4" stroke-linecap="round">
+        <path d="M0 -9.5 V-11.8"/>
+        <path d="M0 9.5 V11.8"/>
+        <path d="M-9.5 0 H-11.8"/>
+        <path d="M9.5 0 H11.8"/>
+      </g>
+    </g><text x="344.0" y="86" text-anchor="middle" font-family="Segoe UI, -apple-system, sans-serif" font-size="12.5" font-weight="600" fill="#1b2028">PLONK</text><text x="344.0" y="100" text-anchor="middle" font-family="Segoe UI, -apple-system, sans-serif" font-size="12.5" fill="#5b6472">coarse locate</text><rect x="472" y="40" width="176" height="68" rx="12" fill="#f3f5f8" stroke="#d3d9e2" stroke-width="1.3"/><g transform="translate(560.0,59)">
+      <circle cx="0" cy="0" r="4.2" fill="#1b2028"/>
+      <g stroke="#1b2028" stroke-width="1.4" stroke-linecap="round">
+        <path d="M0 -8 V-10.6"/>
+        <path d="M0 8 V10.6"/>
+        <path d="M-8 0 H-10.6"/>
+        <path d="M8 0 H10.6"/>
+        <path d="M-5.7 -5.7 L-7.5 -7.5"/>
+        <path d="M5.7 5.7 L7.5 7.5"/>
+        <path d="M-5.7 5.7 L-7.5 7.5"/>
+        <path d="M5.7 -5.7 L7.5 -7.5"/>
+      </g>
+    </g><text x="560.0" y="86" text-anchor="middle" font-family="Segoe UI, -apple-system, sans-serif" font-size="12.5" font-weight="600" fill="#1b2028">Sun / season</text><text x="560.0" y="100" text-anchor="middle" font-family="Segoe UI, -apple-system, sans-serif" font-size="12.5" fill="#5b6472">plausibility</text><rect x="688" y="40" width="176" height="68" rx="12" fill="#f3f5f8" stroke="#d3d9e2" stroke-width="1.3"/><g transform="translate(776.0,59)">
+      <rect x="-8.5" y="-2" width="13" height="10" rx="2" fill="#f3f5f8" stroke="#1b2028" stroke-width="1.4"/>
+      <rect x="-4" y="-8" width="13" height="10" rx="2" fill="#f3f5f8" stroke="#1b2028" stroke-width="1.4"/>
+    </g><text x="776.0" y="86" text-anchor="middle" font-family="Segoe UI, -apple-system, sans-serif" font-size="12.5" font-weight="600" fill="#1b2028">Retrieval</text><text x="776.0" y="100" text-anchor="middle" font-family="Segoe UI, -apple-system, sans-serif" font-size="12.5" fill="#5b6472">refinement</text><rect x="904" y="40" width="176" height="68" rx="12" fill="#f3f5f8" stroke="#d3d9e2" stroke-width="1.3"/><g transform="translate(992.0,59)">
+      <path d="M0 -10 L7.5 -6.8 V0.5 C7.5 5.5 4.2 9 0 10.6 C-4.2 9 -7.5 5.5 -7.5 0.5 V-6.8 Z"
+            fill="none" stroke="#1b2028" stroke-width="1.4" stroke-linejoin="round"/>
+      <path d="M-3.6 0.3 L-1 3 L4 -3" fill="none" stroke="#1b2028" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </g><text x="992.0" y="86" text-anchor="middle" font-family="Segoe UI, -apple-system, sans-serif" font-size="12.5" font-weight="600" fill="#1b2028">Geometric</text><text x="992.0" y="100" text-anchor="middle" font-family="Segoe UI, -apple-system, sans-serif" font-size="12.5" fill="#5b6472">verification</text><rect x="1120" y="40" width="176" height="68" rx="12" fill="#f3f5f8" stroke="#d3d9e2" stroke-width="1.3"/><g transform="translate(1208.0,59)">
+      <path fill="#1b2028" fill-rule="evenodd" transform="scale(0.34) translate(-32,-32)" d="
+        M32 4 C20.95 4 12 12.95 12 24 c0 15 20 36 20 36 s20-21 20-36 C52 12.95 43.05 4 32 4 z
+        M40.6 24 a8.6 8.6 0 1 0 -17.2 0 a8.6 8.6 0 1 0 17.2 0 z"/>
+      <g transform="scale(0.34) translate(-32,-32)" fill="none" stroke="#f3f5f8" stroke-width="1.15" stroke-linecap="round">
+        <path d="M32 16.9 V19.7"/>
+        <path d="M32 28.3 V31.1"/>
+        <path d="M24.9 24 H27.7"/>
+        <path d="M36.3 24 H39.1"/>
+      </g>
+      <circle transform="scale(0.34) translate(-32,-32)" cx="32" cy="24" r="2.3" fill="#f3f5f8"/>
+    </g><text x="1208.0" y="86" text-anchor="middle" font-family="Segoe UI, -apple-system, sans-serif" font-size="12.5" font-weight="600" fill="#1b2028">Ranked candidates</text><text x="1208.0" y="100" text-anchor="middle" font-family="Segoe UI, -apple-system, sans-serif" font-size="12.5" fill="#5b6472">on the map</text></svg>
