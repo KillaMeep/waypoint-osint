@@ -104,7 +104,7 @@ async function installEnv(resourcesDir, onLog) {
   await runCommand(p.uvExe, ['python', 'install', PYTHON_VERSION], onLog, uvEnv);
 
   onLog('Creating virtual environment...');
-  await runCommand(p.uvExe, ['venv', p.venvDir, '--python', PYTHON_VERSION], onLog, uvEnv);
+  await runCommand(p.uvExe, ['venv', p.venvDir, '--python', PYTHON_VERSION, '--clear'], onLog, uvEnv);
 
   onLog('Checking for an NVIDIA GPU...');
   const hasGpu = await detectGpu(onLog);
