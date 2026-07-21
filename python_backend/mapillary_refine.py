@@ -27,11 +27,14 @@ logger = logging.getLogger(__name__)
 MAPILLARY_IMAGES_URL = 'https://graph.mapillary.com/images'
 BBOX_DEG = 0.008  # Mapillary bbox search requires bbox < 0.01 deg square
 MAX_WORKERS = 20  # Mapillary's rate limit (10k/min) has huge headroom for this
-SEARCH_WORKERS = 128  # tile-scan requests are tiny (a few small JSON records each) and
-                       # purely round-trip-bound, not bandwidth-bound. Even at ~1-2s/req,
-                       # this stays well under Mapillary's 10k/min (~166 req/s) limit —
-                       # a full scan (typically ~1-2k tiles) finishes in well under a
-                       # minute, so there's no sustained-rate risk from bursting here.
+SEARCH_WORKERS = 256  # tile-scan requests are tiny (a few small JSON records each) and
+                       # purely round-trip-bound, not bandwidth-bound. 128 workers already
+                       # got a ~1.5k-tile scan down to ~30s (~50 req/s) — still well under
+                       # Mapillary's 10k/min (~166 req/s) limit, so there's headroom to push
+                       # further. Stopped short of 4x/512 here: if per-request latency drops
+                       # as concurrency rises, sustained throughput could approach the rate
+                       # limit itself and start tripping 429s, which would net lose time via
+                       # retries/backoff rather than gain it.
 
 # One pooled session per process, reused across every tile query in a run:
 # requests.get() with no session opens a fresh TCP+TLS connection per call,
