@@ -250,9 +250,28 @@ a:hover { text-decoration: underline; }
 .field-label { font-size: .82rem; font-weight: 600; color: var(--muted); }
 .field-hint { font-size: .8rem; color: var(--faint); }
 .field-note {
+  position: relative;
   display: inline-grid; place-items: center; width: 15px; height: 15px;
   border: 1px solid var(--border-strong); border-radius: 50%;
   font-size: .64rem; color: var(--faint); cursor: help; vertical-align: middle;
+}
+/* Self-rendered tooltip, not the native `title` attribute — Electron/Chromium's
+   built-in title tooltip is inconsistent (delayed, sometimes never appears). */
+.field-note::after {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+  width: max-content; max-width: 220px;
+  padding: 6px 9px; border-radius: 7px;
+  background: var(--surface-3); color: var(--text);
+  border: 1px solid var(--border-strong);
+  font-size: .76rem; font-weight: 400; line-height: 1.35; text-align: left;
+  white-space: normal; cursor: auto;
+  opacity: 0; visibility: hidden; transition: opacity .12s ease;
+  z-index: 20; pointer-events: none;
+  box-shadow: 0 6px 16px rgba(0,0,0,.25);
+}
+.field-note:hover::after, .field-note:focus-visible::after {
+  opacity: 1; visibility: visible;
 }
 .input {
   font: inherit; font-size: .9rem;
@@ -321,6 +340,10 @@ input[type=number].input { width: 120px; }
 .step-sub { grid-column: 2 / -1; margin-top: 8px; display: flex; align-items: center; gap: 10px; }
 .step-sub .track { height: 5px; flex: 1 1 auto; width: auto; }
 .step-sub .step-meta { flex: 0 0 auto; white-space: nowrap; min-width: 0; }
+/* No easing here: these fire many times a second (per-tile/per-image
+   progress), and a .3s transition restarting on every update never lets the
+   fill visually catch up to its real value — it always looks a step behind. */
+.step-sub .progress-fill { transition: none; }
 
 /* ---------- Progress ---------- */
 .track { height: 8px; background: var(--surface-3); border-radius: 6px; overflow: hidden; width: 100%; }
