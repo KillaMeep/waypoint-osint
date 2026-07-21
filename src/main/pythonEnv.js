@@ -86,11 +86,22 @@ async function ensureUv(resourcesDir, onLog) {
   fs.unlinkSync(p.uvZip);
 }
 
-function detectGpu(onLog) {
+function queryGpuInfo() {
+  // VRAM (not the exact model) is the signal used to size default sample
+  // counts in the renderer -- it's free from this same query, correlates
+  // reasonably with GPU generation/tier, and needs no upkeep as new cards
+  // ship, unlike a hardcoded per-model name lookup table.
   return new Promise((resolve) => {
-    const proc = spawn('nvidia-smi', [], { windowsHide: true });
-    proc.on('error', () => resolve(false)); // nvidia-smi not on PATH -> no NVIDIA GPU/driver
-    proc.on('close', (code) => resolve(code === 0));
+    const proc = spawn('nvidia-smi', ['--query-gpu=name,memory.total', '--format=csv,noheader,nounits'], { windowsHide: true });
+    let out = '';
+    proc.stdout.on('data', (d) => { out += d; });
+    proc.on('error', () => resolve({ hasGpu: false })); // nvidia-smi not on PATH -> no NVIDIA GPU/driver
+    proc.on('close', (code) => {
+      if (code !== 0) return resolve({ hasGpu: false });
+      const [name, vramStr] = (out.split('\n')[0] || '').split(',').map((s) => s.trim());
+      const vramMb = parseInt(vramStr, 10);
+      resolve({ hasGpu: true, gpuName: name || null, vramMb: Number.isFinite(vramMb) ? vramMb : null });
+    });
   });
 }
 
@@ -107,14 +118,16 @@ async function installEnv(resourcesDir, onLog) {
   await runCommand(p.uvExe, ['venv', p.venvDir, '--python', PYTHON_VERSION, '--clear'], onLog, uvEnv);
 
   onLog('Checking for an NVIDIA GPU...');
-  const hasGpu = await detectGpu(onLog);
-  onLog(hasGpu ? 'NVIDIA GPU detected, installing CUDA-enabled torch.' : 'No NVIDIA GPU detected, installing CPU-only torch (inference will be slower).');
+  const gpuInfo = await queryGpuInfo();
+  onLog(gpuInfo.hasGpu
+    ? `NVIDIA GPU detected (${gpuInfo.gpuName || 'unknown model'}${gpuInfo.vramMb ? `, ${(gpuInfo.vramMb / 1024).toFixed(1)}GB` : ''}), installing CUDA-enabled torch.`
+    : 'No NVIDIA GPU detected, installing CPU-only torch (inference will be slower).');
 
   const torchArgs = ['pip', 'install', '--python', p.pythonExe, 'torch', 'torchvision'];
-  if (hasGpu) torchArgs.push('--index-url', CUDA_TORCH_INDEX);
+  if (gpuInfo.hasGpu) torchArgs.push('--index-url', CUDA_TORCH_INDEX);
   await runCommand(p.uvExe, torchArgs, onLog, uvEnv);
 
-  return hasGpu;
+  return gpuInfo;
 }
 
 async function installRequirements(resourcesDir, requirementsFile, onLog) {

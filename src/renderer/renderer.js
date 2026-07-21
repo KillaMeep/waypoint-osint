@@ -139,7 +139,7 @@ $('setupStartBtn').addEventListener('click', async () => {
   setupBar(1, 'Starting…');
   const result = await window.api.runEnvSetup();
   btn.classList.remove('busy'); stopCrawl();
-  if (result.ok) { setupBar(100, 'Setup complete'); setTimeout(() => showScreen('mainScreen'), 700); }
+  if (result.ok) { setupBar(100, 'Setup complete'); setTimeout(async () => { showScreen('mainScreen'); await applyRecommendedSamples(); }, 700); }
   else { setupAppend(`Setup failed: ${result.error}`); $('setupStatus').textContent = 'Setup failed, see details.'; btn.disabled = false; }
 });
 window.api.onEnvProgress((payload) => {
@@ -621,9 +621,31 @@ document.addEventListener('click', (e) => {
 });
 
 /* ============================================================ Startup */
+
+// The coarse-locate sampler's per-sample cost is nearly VRAM-agnostic (the
+// image embedding is computed once and just repeated across the batch, see
+// plonk's PlonkPipeline.__call__), so raising the default doesn't risk OOM
+// the way a normal vision-model batch size would. The real cost that scales
+// with sample count is CPU-only wall-clock time (no GPU batch parallelism),
+// so default low with no GPU and scale up with detected VRAM as a rough,
+// maintenance-free proxy for GPU tier (no per-model name lookup to keep
+// updated as new cards ship).
+function recommendedSamples(hardware) {
+  if (!hardware || !hardware.hasGpu) return 512;
+  const vramGb = (hardware.vramMb || 0) / 1024;
+  if (vramGb >= 16) return 4096;
+  if (vramGb >= 12) return 2048;
+  if (vramGb >= 8) return 1024;
+  return 768;
+}
+async function applyRecommendedSamples() {
+  const settings = await window.api.getSettings();
+  if (settings.hardware) $('numSamples').value = recommendedSamples(settings.hardware);
+}
+
 (async () => {
   const status = await window.api.getEnvStatus();
   resetSteps();
-  if (status.pythonInstalled && status.depsInstalled) showScreen('mainScreen');
+  if (status.pythonInstalled && status.depsInstalled) { showScreen('mainScreen'); await applyRecommendedSamples(); }
   else showScreen('setupScreen');
 })();

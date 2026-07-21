@@ -105,8 +105,9 @@ ipcMain.handle('env:setup', async (event) => {
 
   try {
     send({ event: 'stage_start', stage: 'python_env' });
-    const gpuDetected = await pythonEnv.installEnv(resourcesDir, log);
-    send({ event: 'stage_done', stage: 'python_env', gpu_detected: gpuDetected });
+    const gpuInfo = await pythonEnv.installEnv(resourcesDir, log);
+    writeSettings({ ...readSettings(), hardware: gpuInfo });
+    send({ event: 'stage_done', stage: 'python_env', gpu_detected: gpuInfo.hasGpu, gpu_name: gpuInfo.gpuName, gpu_vram_mb: gpuInfo.vramMb });
 
     send({ event: 'stage_start', stage: 'pipeline_deps' });
     const requirementsFile = path.join(BACKEND_DIR(), 'requirements_base.txt');
