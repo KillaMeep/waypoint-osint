@@ -121,8 +121,11 @@ def _query_panoids(lat: float, lon: float):
     return out
 
 
-def search_panoramas(lat: float, lon: float, radius_km: float, max_images: int = 150):
-    """Find nearby Street View panorama IDs by sampling points along real roads."""
+def search_panoramas(lat: float, lon: float, radius_km: float, max_images: int = 150, on_progress=None):
+    """Find nearby Street View panorama IDs by sampling points along real roads.
+
+    on_progress(completed, total), if given, is called after each sample point
+    finishes probing — same rationale as Mapillary's tile-scan progress."""
     sample_points = get_road_sample_points(lat, lon, radius_km)
     if not sample_points:
         logger.warning('Google SV: no road geometry found nearby, cannot sample panoids.')
@@ -132,9 +135,12 @@ def search_panoramas(lat: float, lon: float, radius_km: float, max_images: int =
 
     seen_ids = set()
     results = []
+    total_points = len(sample_points)
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = [pool.submit(_query_panoids, plat, plon) for plat, plon in sample_points]
-        for future in as_completed(futures):
+        for i, future in enumerate(as_completed(futures), 1):
+            if on_progress:
+                on_progress(i, total_points)
             for p in future.result():
                 if p['panoid'] in seen_ids:
                     continue
@@ -219,7 +225,7 @@ def refine_with_google_sv(pipeline, image_path: str, cluster: dict,
     with DISK+LightGlue geometric matching (see verify_utils).
 
     on_progress(phase, completed, total), if given, is called during the
-    'download' and 'verify' phases for a UI progress bar."""
+    'search', 'download', and 'verify' phases for a UI progress bar."""
     if radius_km is None:
         from mapillary_refine import cluster_radius_km
         # Cap lower than Mapillary's own sizing: roads (and therefore panoramas)
@@ -227,7 +233,8 @@ def refine_with_google_sv(pipeline, image_path: str, cluster: dict,
         # Overpass road-geometry query heavy enough to trip its rate limit.
         radius_km = cluster_radius_km(cluster, max_km=8.0)
 
-    panoids = search_panoramas(cluster['lat'], cluster['lon'], radius_km, max_images=max_images)
+    search_cb = (lambda i, n: on_progress('search', i, n)) if on_progress else None
+    panoids = search_panoramas(cluster['lat'], cluster['lon'], radius_km, max_images=max_images, on_progress=search_cb)
     if not panoids:
         return []
 

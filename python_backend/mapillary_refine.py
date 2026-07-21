@@ -75,18 +75,26 @@ def _query_tile(tile, token: str, per_tile_limit: int):
 
 
 def search_nearby_images(lat: float, lon: float, radius_km: float, token: str,
-                          per_tile_limit: int = 5, max_images: int = 150):
+                          per_tile_limit: int = 5, max_images: int = 150, on_progress=None):
     """Query Mapillary for real street-level photos within radius_km of a point.
     Tile queries run concurrently — Mapillary's rate limit (10k/min) has plenty
-    of headroom, and serial per-tile requests don't scale to wider radii."""
+    of headroom, and serial per-tile requests don't scale to wider radii.
+
+    on_progress(completed, total), if given, is called after each tile finishes
+    — with wide radii this can be 1000+ tiles and take a while, so it's worth
+    reporting alongside the download/verify phases rather than leaving the UI
+    blank until the scan finishes."""
     tiles = _bbox_tiles(lat, lon, radius_km)
     logger.info(f'Mapillary: scanning {len(tiles)} tiles within {radius_km:.1f}km of ({lat:.4f},{lon:.4f}) ({MAX_WORKERS} concurrent)...')
 
     seen_ids = set()
     results = []
+    total_tiles = len(tiles)
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
         futures = [pool.submit(_query_tile, t, token, per_tile_limit) for t in tiles]
-        for future in as_completed(futures):
+        for i, future in enumerate(as_completed(futures), 1):
+            if on_progress:
+                on_progress(i, total_tiles)
             for item in future.result():
                 if item['id'] in seen_ids:
                     continue
@@ -159,12 +167,15 @@ def refine_with_retrieval(pipeline, image_path: str, cluster: dict, token: str,
     cosine similarity alone can't reliably tell "same street" from "similar-
     looking street," geometric inlier count can.
 
-    on_progress(phase, completed, total), if given, is called during the two
-    slow parts of this stage ('download' and 'verify') for a UI progress bar."""
+    on_progress(phase, completed, total), if given, is called during the
+    slow parts of this stage ('search', 'download', and 'verify') for a UI
+    progress bar."""
     if radius_km is None:
         radius_km = cluster_radius_km(cluster)
 
-    candidates = search_nearby_images(cluster['lat'], cluster['lon'], radius_km, token, max_images=max_images)
+    search_cb = (lambda i, n: on_progress('search', i, n)) if on_progress else None
+    candidates = search_nearby_images(cluster['lat'], cluster['lon'], radius_km, token,
+                                       max_images=max_images, on_progress=search_cb)
     if not candidates:
         return []
 
