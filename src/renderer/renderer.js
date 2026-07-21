@@ -146,11 +146,15 @@ window.api.onEnvProgress((payload) => {
   if (payload.event === 'log') {
     setupAppend(payload.message);
     for (const line of String(payload.message).split('\n')) if (line.trim()) setupPhase(line);
-  } else if (payload.event === 'stage_start') { setupAppend(`--- ${payload.stage} ---`); }
-  else if (payload.event === 'stage_done') {
+  } else if (payload.event === 'stage_start') {
+    setupAppend(`--- ${payload.stage} ---`);
+    if (payload.stage === 'calibrate') { stopCrawl(); setupBar(96, 'Benchmarking sampling speed'); }
+  } else if (payload.event === 'stage_done') {
     setupAppend(`${payload.stage} done.`);
     if (payload.stage === 'python_env' && 'gpu_detected' in payload)
       setupAppend(payload.gpu_detected ? 'NVIDIA GPU detected.' : 'No GPU detected, CPU mode (slower).');
+    if (payload.stage === 'calibrate' && payload.samples_per_sec)
+      setupAppend(`Measured ${payload.samples_per_sec.toFixed(0)} samples/sec, default Samples set to ${payload.recommended_samples}.`);
   }
 });
 
@@ -622,16 +626,16 @@ document.addEventListener('click', (e) => {
 
 /* ============================================================ Startup */
 
-// The coarse-locate sampler's per-sample cost is nearly VRAM-agnostic (the
-// image embedding is computed once and just repeated across the batch, see
-// plonk's PlonkPipeline.__call__), so raising the default doesn't risk OOM
-// the way a normal vision-model batch size would. The real cost that scales
-// with sample count is CPU-only wall-clock time (no GPU batch parallelism),
-// so default low with no GPU and scale up with detected VRAM as a rough,
-// maintenance-free proxy for GPU tier (no per-model name lookup to keep
-// updated as new cards ship).
+// Setup times a real calibration batch (see calibrate.py) and stores the
+// result as hardware.recommendedSamples -- that's the real signal, since
+// VRAM turned out to be a poor proxy (a 4096-sample batch only uses a few GB
+// regardless of card; PLONK's sampler operates on 3D coordinates, not
+// images, so compute throughput varies far more across cards than memory
+// use does). The VRAM-tier fallback below only applies to settings written
+// before calibration existed, until the user re-runs setup.
 function recommendedSamples(hardware) {
   if (!hardware || !hardware.hasGpu) return 512;
+  if (hardware.recommendedSamples) return hardware.recommendedSamples;
   const vramGb = (hardware.vramMb || 0) / 1024;
   if (vramGb >= 16) return 4096;
   if (vramGb >= 12) return 2048;

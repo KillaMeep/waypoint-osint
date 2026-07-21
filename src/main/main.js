@@ -90,6 +90,33 @@ ipcMain.handle('settings:set', (_evt, settings) => {
 
 // ---- Environment setup (uv-managed Python + deps) ----
 
+// Runs calibrate.py (loads the real model, times a real batch) once during
+// setup so the Samples field default reflects actual measured throughput on
+// this machine instead of a VRAM/GPU-name guess -- see calibrate.py for why.
+function runCalibration(resourcesDir, log) {
+  return new Promise((resolve, reject) => {
+    let result = null;
+    const proc = pythonEnv.spawnBackendScript(
+      resourcesDir, BACKEND_DIR(), 'calibrate.py', [],
+      (evt) => { if (evt.event === 'calibration') result = evt; },
+      log,
+    );
+    proc.on('close', (code) => {
+      if (code === 0 && result) resolve(result);
+      else reject(new Error(`calibration process exited with code ${code}`));
+    });
+  });
+}
+
+// Targets ~10s of sampling for a single run at the recommended default,
+// rounded to the field's step size and clamped to a sane range.
+const CALIBRATION_TARGET_SECONDS = 10;
+function samplesFromThroughput(samplesPerSec) {
+  if (!(samplesPerSec > 0)) return 512;
+  const raw = samplesPerSec * CALIBRATION_TARGET_SECONDS;
+  return Math.max(256, Math.min(8192, Math.round(raw / 64) * 64));
+}
+
 ipcMain.handle('env:status', () => {
   const resourcesDir = RESOURCES_DIR();
   return {
@@ -113,6 +140,17 @@ ipcMain.handle('env:setup', async (event) => {
     const requirementsFile = path.join(BACKEND_DIR(), 'requirements_base.txt');
     await pythonEnv.installRequirements(resourcesDir, requirementsFile, log);
     send({ event: 'stage_done', stage: 'pipeline_deps' });
+
+    send({ event: 'stage_start', stage: 'calibrate' });
+    try {
+      const calib = await runCalibration(resourcesDir, log);
+      const recommendedSamples = samplesFromThroughput(calib.samples_per_sec);
+      writeSettings({ ...readSettings(), hardware: { ...gpuInfo, samplesPerSec: calib.samples_per_sec, recommendedSamples } });
+      send({ event: 'stage_done', stage: 'calibrate', samples_per_sec: calib.samples_per_sec, recommended_samples: recommendedSamples });
+    } catch (e) {
+      log(`Calibration skipped: ${e.message}`);
+      send({ event: 'stage_done', stage: 'calibrate' });
+    }
 
     fs.mkdirSync(RESOURCES_DIR(), { recursive: true });
     fs.writeFileSync(DEPS_MARKER(), new Date().toISOString(), 'utf8');
