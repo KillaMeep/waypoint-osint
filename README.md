@@ -6,9 +6,6 @@
 
 **Free, open-source image geolocation. Figure out where a photo was taken.**
 
-PLONK coarse localization → street-level retrieval refinement → geometric verification.
-A self-contained desktop app. No paid APIs, no cloud, everything runs on your machine.
-
 ![License](https://img.shields.io/badge/license-MIT-2f6feb)
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6)
 ![Electron](https://img.shields.io/badge/Electron-33-47848F?logo=electron&logoColor=white)
