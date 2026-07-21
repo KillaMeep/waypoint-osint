@@ -1,0 +1,9 @@
+diff-plonk
+geopy
+scikit-learn
+matplotlib
+astral
+requests
+kornia
+kornia_rs
+opencv-python-headless

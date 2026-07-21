@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+out/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Dev / test artifacts
+.playwright-mcp/
+test_output*.ndjson
+test_stderr*.log
+*.log
+
+# Editor / OS cruft
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local env files
+.env
+*.local

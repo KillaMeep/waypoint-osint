@@ -1,0 +1,12 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <path fill="currentColor" fill-rule="evenodd" d="
+    M32 4 C20.95 4 12 12.95 12 24 c0 15 20 36 20 36 s20-21 20-36 C52 12.95 43.05 4 32 4 z
+    M40.6 24 a8.6 8.6 0 1 0 -17.2 0 a8.6 8.6 0 1 0 17.2 0 z"/>
+  <g fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round">
+    <path d="M32 16.9 V19.7"/>
+    <path d="M32 28.3 V31.1"/>
+    <path d="M24.9 24 H27.7"/>
+    <path d="M36.3 24 H39.1"/>
+  </g>
+  <circle cx="32" cy="24" r="2.3" fill="currentColor"/>
+</svg>

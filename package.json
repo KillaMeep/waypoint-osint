@@ -1,0 +1,42 @@
+{
+  "name": "geolocator-gui",
+  "version": "0.1.0",
+  "description": "Free, open-source image geolocation toolchain (PLONK + Mapillary/Google SV/Panoramax retrieval + DISK/LightGlue geometric verification) with a portable Electron GUI.",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "dependencies": {
+    "extract-zip": "^2.0.1"
+  },
+  "build": {
+    "appId": "com.osint.waypoint",
+    "productName": "Waypoint",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "python_backend/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": "resources",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "resources/icon.png"
+    }
+  }
+}
