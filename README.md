@@ -19,13 +19,13 @@
 
 ## What it is
 
-Waypoint takes a single outdoor photo and estimates **where on Earth it was taken**. It starts
-with a neural coarse guess, sanity-checks it against the sun, then confirms the exact spot by
-matching the photo against real street-level imagery. Every candidate shows up on an interactive
-map with a confidence score you can drill into.
+Waypoint takes a single outdoor photo and estimates **where on Earth it was taken**. It generates a
+coarse guess with a neural network. Then it checks the guess against the sun's position. Finally,
+it confirms the location by matching the photo to real street-level imagery. Every candidate shows
+up on an interactive map with a confidence score you can drill into.
 
-It's built for OSINT research, verification and journalism, and geolocation CTFs. Everything runs
-locally; the only things that leave your machine are the imagery lookups the refinement stages make.
+Use Waypoint for OSINT research, verification, journalism, and geolocation CTFs. Everything runs
+locally. Only the imagery lookups in the refinement stages send data from your machine.
 
 ## How it works
 
@@ -35,11 +35,11 @@ locally; the only things that leave your machine are the imagery lookups the ref
   <img src="assets/pipeline-light.svg" alt="Pipeline: photo, PLONK coarse locate, sun and season plausibility, retrieval refinement, geometric verification, ranked candidates on the map">
 </picture>
 
-1. **Coarse localization.** [PLONK](https://github.com/nicolas-dufour/plonk), a diffusion model, samples a spread of plausible locations and clusters them into weighted candidates.
-2. **Sun / season plausibility.** Shadow direction and lighting get checked against the sun's position for the implied place, date, and time, downranking implausible guesses.
-3. **Retrieval refinement.** Each candidate is compared against nearby real photos from **Mapillary**, **Google Street View**, and **Panoramax**.
-4. **Geometric verification.** Promising matches are confirmed with local-feature matching (**DISK + LightGlue** via `kornia`). The inlier count tells you how solid a match really is.
-5. **Refine.** Pick any candidate or match and run a tight, exhaustive search of a small radius around it.
+1. **Coarse localization.** [PLONK](https://github.com/nicolas-dufour/plonk), a diffusion model, samples a spread of plausible locations. It clusters the locations into weighted candidates.
+2. **Sun / season plausibility.** Waypoint checks shadow direction and lighting against the sun's position for the implied place, date, and time. Guesses that do not match lose rank.
+3. **Retrieval refinement.** Waypoint compares each candidate against nearby real photos from **Mapillary**, **Google Street View**, and **Panoramax**.
+4. **Geometric verification.** Waypoint confirms promising matches with local-feature matching (**DISK + LightGlue**, via `kornia`). The inlier count shows how strong a match is.
+5. **Refine.** Pick any candidate or match. Waypoint then runs an exhaustive search of a small radius around it.
 
 ## Features
 
@@ -47,12 +47,12 @@ locally; the only things that leave your machine are the imagery lookups the ref
 - **Confidence, uncertainty, and evidence.** Cluster weight, sample spread, and the sun-plausibility verdict, all surfaced per candidate.
 - **One-click refine.** Send any result into a focused, exhaustively-verified re-search.
 - **Light and dark theme**, a three-tab workflow (Analyze, Results, Refine), no clutter.
-- **No paid APIs.** Google Street View, Panoramax, and OpenStreetMap need no keys; Mapillary is optional and free.
+- **No paid APIs.** Google Street View, Panoramax, and OpenStreetMap need no keys. Mapillary is optional and free.
 - **Zero manual setup.** The app downloads its own portable Python runtime on first launch. No system Python required.
 
 ## Requirements
 
-- **Windows 10 / 11 (x64).** _(macOS/Linux aren't supported yet; first-run setup fetches a Windows Python build.)_
+- **Windows 10 / 11 (x64).** _(Waypoint does not yet support macOS or Linux. First-run setup fetches a Windows Python build.)_
 - **[Node.js](https://nodejs.org/) 18+** and npm, to install and run from source.
 - **~6–8 GB free disk** (PyTorch and model weights) and an **internet connection** for first-run setup, imagery lookups, and the model download.
 - **Optional: an NVIDIA GPU** (CUDA), auto-detected for faster inference. Otherwise it runs on CPU.
@@ -70,16 +70,20 @@ npm start
 
 On the very first run, Waypoint installs a **portable Python environment** for itself. It downloads
 [`uv`](https://github.com/astral-sh/uv), a managed Python 3.11 interpreter, and the pipeline
-dependencies (PyTorch and the rest). This takes a few minutes and shows a progress bar. Everything
-lands in the app's own data folder; your system Python, if you have one, is never touched. You can
-wipe and redo this anytime from **Settings → Purge Python install**.
+dependencies (PyTorch and the rest). This takes a few minutes. Waypoint shows a progress bar during
+setup. Everything lands in the app's own data folder. Waypoint never touches your system Python, if
+you have one. You can wipe and redo this anytime from **Settings → Purge Python install**.
 
 ### Optional: Mapillary token
 
-The Mapillary refinement stage needs a free API token. Open **Settings**, paste a token from
-[mapillary.com/dashboard/developers](https://www.mapillary.com/dashboard/developers), and save.
-Without it, that one stage is simply skipped. Google Street View, Panoramax, and OpenStreetMap
-work with no keys at all.
+The Mapillary refinement stage needs a free API token.
+
+1. Open **Settings**.
+2. Paste a token from [mapillary.com/dashboard/developers](https://www.mapillary.com/dashboard/developers).
+3. Save.
+
+Without a token, Waypoint skips the Mapillary stage. Google Street View, Panoramax, and
+OpenStreetMap work with no keys at all.
 
 ## Building a portable executable
 
