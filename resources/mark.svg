@@ -1,12 +1,13 @@
-<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-  <path fill="currentColor" fill-rule="evenodd" d="
-    M32 4 C20.95 4 12 12.95 12 24 c0 15 20 36 20 36 s20-21 20-36 C52 12.95 43.05 4 32 4 z
-    M40.6 24 a8.6 8.6 0 1 0 -17.2 0 a8.6 8.6 0 1 0 17.2 0 z"/>
-  <g fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="round">
-    <path d="M32 16.9 V19.7"/>
-    <path d="M32 28.3 V31.1"/>
-    <path d="M24.9 24 H27.7"/>
-    <path d="M36.3 24 H39.1"/>
+<svg width="64" height="64" viewBox="96 96 320 320" xmlns="http://www.w3.org/2000/svg">
+  <!-- Waypoint mark without the tile. The frame uses currentColor; the pin
+       keeps the brand vermilion, with its eye cut out so it sits on any background. -->
+  <g fill="none" stroke="currentColor" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M110 186 V110 H186"/>
+    <path d="M326 110 H402 V186"/>
+    <path d="M402 326 V402 H326"/>
+    <path d="M186 402 H110 V326"/>
   </g>
-  <circle cx="32" cy="24" r="2.3" fill="currentColor"/>
+  <path fill="#ff5b2e" fill-rule="evenodd" stroke="#ff5b2e" stroke-width="8" stroke-linejoin="round"
+        d="M199.14 276.83 A70 70 0 1 1 312.86 276.83 L256 356 Z
+           M228 236 a28 28 0 1 0 56 0 a28 28 0 1 0 -56 0 Z"/>
 </svg>

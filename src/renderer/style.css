@@ -147,7 +147,7 @@ h1, h2, h3 { margin: 0; font-family: var(--font-display); letter-spacing: -.01em
   background: var(--panel); border-bottom: 1px solid var(--line);
 }
 .brand { display: flex; align-items: center; gap: 10px; font-family: var(--font-display); font-weight: 700; font-size: 16px; letter-spacing: -.01em; }
-.brand-mark { width: 30px; height: 25px; color: var(--text); }
+.brand-mark { width: 24px; height: 24px; color: var(--text); }
 
 .modes { display: inline-flex; padding: 3px; gap: 2px; background: var(--sunken); border: 1px solid var(--line); border-radius: 9px; }
 .mode {
@@ -431,7 +431,7 @@ h1, h2, h3 { margin: 0; font-family: var(--font-display); letter-spacing: -.01em
   background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow-lg);
   display: flex; flex-direction: column; gap: 16px;
 }
-.setup-mark { width: 52px; height: 42px; color: var(--text); }
+.setup-mark { width: 44px; height: 44px; color: var(--text); }
 .setup-card h1 { font-size: 24px; }
 .setup-card p { margin: -6px 0 0; }
 .setup-status-row { display: flex; justify-content: space-between; gap: 12px; font-weight: 600; margin-bottom: 8px; }
