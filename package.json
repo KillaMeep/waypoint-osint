@@ -1,47 +1,15 @@
 {
-  "name": "geolocator-gui",
-  "version": "0.1.0",
-  "description": "Free, open-source image geolocation toolchain (PLONK + Mapillary/Google SV/Panoramax retrieval + DISK/LightGlue geometric verification) with a portable Electron GUI.",
-  "main": "src/main/main.js",
-  "scripts": {
-    "start": "electron .",
-    "dist": "electron-builder"
-  },
-  "author": "",
+  "name": "waypoint",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Free, open-source image geolocation toolchain (PLONK + Mapillary/Google SV/Panoramax retrieval + DISK/LightGlue geometric verification) with a portable Tauri GUI.",
   "license": "MIT",
+  "scripts": {
+    "start": "tauri dev",
+    "dist": "tauri build --no-bundle",
+    "tauri": "tauri"
+  },
   "devDependencies": {
-    "electron": "^33.0.0",
-    "electron-builder": "^25.0.0"
-  },
-  "dependencies": {
-    "extract-zip": "^2.0.1"
-  },
-  "build": {
-    "appId": "com.osint.waypoint",
-    "productName": "Waypoint",
-    "artifactName": "Waypoint.exe",
-    "directories": {
-      "output": "dist"
-    },
-    "files": [
-      "src/**/*",
-      "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "resources",
-        "to": "resources",
-        "filter": ["**/*"]
-      },
-      {
-        "from": "python_backend",
-        "to": "python_backend",
-        "filter": ["**/*"]
-      }
-    ],
-    "win": {
-      "target": "portable",
-      "icon": "resources/icon.png"
-    }
+    "@tauri-apps/cli": "^2.11.0"
   }
 }

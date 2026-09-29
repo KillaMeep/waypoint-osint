@@ -2,7 +2,7 @@
 """
 Geolocator GUI pipeline orchestrator.
 
-Run standalone (spawned by the Electron main process); emits one JSON object
+Run standalone (spawned by the Tauri shell); emits one JSON object
 per line to stdout (NDJSON) so the GUI can show live step-by-step progress
 instead of waiting on one big blocking call. Two modes:
 

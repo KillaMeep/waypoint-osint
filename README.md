@@ -8,7 +8,8 @@
 
 ![License](https://img.shields.io/badge/license-MIT-2f6feb)
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6)
-![Electron](https://img.shields.io/badge/Electron-33-47848F?logo=electron&logoColor=white)
+![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)
+![Rust](https://img.shields.io/badge/Rust-stable-B7410E?logo=rust&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 
 </div>
@@ -46,7 +47,9 @@ locally. Only the imagery lookups in the refinement stages send data from your m
 - **Interactive map** (Leaflet + OpenStreetMap) with candidate and per-source match pins, auto-fit to the results.
 - **Confidence, uncertainty, and evidence.** Cluster weight, sample spread, and the sun-plausibility verdict, all surfaced per candidate.
 - **One-click refine.** Send any result into a focused, exhaustively-verified re-search.
-- **Light and dark theme**, a three-tab workflow (Analyze, Results, Refine), no clutter.
+- **One map, two modes.** Locate finds candidates. Refine searches a small radius around any point you pick: from a candidate, from a match, or by clicking the map.
+- **Drop a photo anywhere** on the window. The photo stays in view, with a full-size viewer for side-by-side comparison.
+- **Light and dark theme**, a Stop button for long runs, and a log drawer when you want the raw events.
 - **No paid APIs.** Google Street View, Panoramax, and OpenStreetMap need no keys. Mapillary is optional and free.
 - **Zero manual setup.** The app downloads its own portable Python runtime on first launch. No system Python required.
 
@@ -54,6 +57,8 @@ locally. Only the imagery lookups in the refinement stages send data from your m
 
 - **Windows 10 / 11 (x64).** _(Waypoint does not yet support macOS or Linux. First-run setup fetches a Windows Python build.)_
 - **[Node.js](https://nodejs.org/) 18+** and npm, to install and run from source.
+- **[Rust](https://rustup.rs/) (stable)** and the **Visual Studio C++ Build Tools**, to compile the Tauri shell. See the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
+- **WebView2.** Windows 10 and 11 already include it.
 - **~6–8 GB free disk** (PyTorch and model weights) and an **internet connection** for first-run setup, imagery lookups, and the model download.
 - **Optional: an NVIDIA GPU** (CUDA), auto-detected for faster inference. Otherwise it runs on CPU.
 
@@ -91,13 +96,15 @@ OpenStreetMap work with no keys at all.
 npm run dist
 ```
 
-Produces a standalone Windows portable `.exe` in `dist/` (via `electron-builder`).
+Produces a standalone portable exe at `src-tauri/target/release/waypoint.exe` (about 8 MB). The
+frontend and the Python backend scripts are embedded in it. The backend unpacks next to the Python
+runtime on launch.
 
 ## Under the hood
 
 | Layer | Tech |
 |-------|------|
-| Desktop shell | Electron |
+| Desktop shell | Tauri 2 (Rust) + WebView2 |
 | Coarse geolocation | PLONK (`diff-plonk`) |
 | Sun/season check | `astral` (sun position vs. OpenStreetMap road bearings) |
 | Street-level imagery | Mapillary API · Google Street View · Panoramax |

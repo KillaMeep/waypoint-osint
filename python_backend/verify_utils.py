@@ -36,7 +36,7 @@ def _get_models():
     if _disk is None:
         # kornia's LightGlue loader does a raw print() straight to stdout,
         # which would corrupt an NDJSON stdout protocol (as used by the
-        # Geolocator GUI's Electron<->Python bridge). Redirect it away.
+        # the desktop shell's NDJSON bridge). Redirect it away.
         with contextlib.redirect_stdout(io.StringIO()):
             _disk = KF.DISK.from_pretrained('depth').to(_device).eval()
             _matcher = KF.LightGlueMatcher('disk').to(_device).eval()
