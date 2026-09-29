@@ -1,7 +1,6 @@
 //! Mapillary retrieval (port of `mapillary_refine.py`). Needs the user's API token.
 
 use std::collections::HashSet;
-use std::io::Cursor;
 
 use image::RgbImage;
 use serde_json::Value;
@@ -81,10 +80,7 @@ pub fn search_nearby_images(ctx: &Ctx, lat: f64, lon: f64, radius_km: f64, token
     Ok(results)
 }
 
-pub fn decode_rgb(bytes: &[u8]) -> std::result::Result<RgbImage, String> {
-    let img = image::ImageReader::new(Cursor::new(bytes)).with_guessed_format().map_err(|e| e.to_string())?.decode().map_err(|e| e.to_string())?;
-    Ok(img.to_rgb8())
-}
+pub use crate::imgio::decode_rgb;
 
 /// Download + decode thumbnails concurrently. Returns (index into `urls`, image) for the successes.
 pub fn download_all(ctx: &Ctx, urls: Vec<String>, on_progress: &mut dyn FnMut(usize, usize)) -> Result<Vec<Option<RgbImage>>> {

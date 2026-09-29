@@ -591,6 +591,7 @@ fn run_pipeline(app: AppHandle, mode: Mode, args: RunArgs) -> Result<u32, String
 
     let script = state.paths.backend().join("model_server.py");
     let cwd = state.paths.backend();
+    let data_dir = state.paths.data.clone();
     thread::spawn(move || {
         let sink = TauriSink { app: app.clone() };
         let log_app = app.clone();
@@ -601,7 +602,18 @@ fn run_pipeline(app: AppHandle, mode: Mode, args: RunArgs) -> Result<u32, String
                 let pid = models.pid();
                 *server_pid.lock().unwrap() = Some(pid);
                 app.state::<AppState>().track(pid);
-                let code = core_run(&ra, &*models, &sink, &cancel);
+                // Retrieval networks run in-process (ONNX Runtime) when installed;
+                // otherwise everything goes through the Python model server.
+                let native = waypoint_core::native::locate(&data_dir).and_then(|loc| {
+                    waypoint_core::native::open(&loc, models.clone(), &|s| sink.log(s))
+                        .map_err(|e| sink.log(&format!("native models unavailable ({e}); using the Python model server")))
+                        .ok()
+                });
+                let code = match &native {
+                    Some(n) => core_run(&ra, n, &sink, &cancel),
+                    None => core_run(&ra, &*models, &sink, &cancel),
+                };
+                drop(native);
                 models.shutdown();
                 app.state::<AppState>().untrack(pid);
                 code

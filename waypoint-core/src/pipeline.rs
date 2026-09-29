@@ -184,8 +184,8 @@ impl<'a> Run<'a> {
 
         if !a.no_sun_refine {
             emit(self.sink, "stage_start", json!({ "stage": "sun_refine" }));
-            let meta = match image::open(&a.image_path) {
-                Ok(img) => match sun::refine_clusters(&mut cl, &img.to_rgb8(), a.fov, self.cancel, &log) {
+            let meta = match crate::imgio::open_rgb(&a.image_path) {
+                Ok(img) => match sun::refine_clusters(&mut cl, &img, a.fov, self.cancel, &log) {
                     Ok(m) => m,
                     Err(Error::Cancelled) => return Err(Error::Cancelled),
                     Err(e) => {

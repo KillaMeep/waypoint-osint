@@ -19,7 +19,9 @@ serde_json = { version = "1", features = ["preserve_order"] }
 ureq = "2"
 regex = "1"
 base64 = "0.22"
+jpeg-decoder = { version = "0.3", default-features = false }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp", "webp"] }
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "load-dynamic", "api-24", "directml", "cuda"] }
 
 [dev-dependencies]
 npyz = { version = "0.8", features = ["npz"] }

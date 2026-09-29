@@ -8,9 +8,13 @@
 
 pub mod astral;
 pub mod geo;
+pub mod imgio;
 pub mod models;
+pub mod native;
 pub mod net;
+pub mod onnx;
 pub mod pipeline;
+pub mod prep;
 pub mod pyserver;
 pub mod ransac;
 pub mod retrieval;
