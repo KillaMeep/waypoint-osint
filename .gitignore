@@ -28,3 +28,10 @@ Thumbs.db
 # Tauri
 src-tauri/target/
 src-tauri/gen/schemas/
+
+# Local tooling (export venv, parity reference data)
+.venv-export/
+.uv-python/
+tools/parity/ref/
+tools/parity/work/
+target/
