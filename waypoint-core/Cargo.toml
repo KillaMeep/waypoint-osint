@@ -1,0 +1,25 @@
+[package]
+name = "waypoint-core"
+version = "0.2.0"
+description = "Waypoint geolocation backend: orchestration, imagery clients, clustering, sun math, geometric verification"
+license = "MIT"
+edition = "2021"
+rust-version = "1.90"
+
+[lib]
+name = "waypoint_core"
+
+[[bin]]
+name = "waypoint-cli"
+path = "src/bin/waypoint-cli.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+ureq = "2"
+regex = "1"
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "bmp", "webp"] }
+
+[dev-dependencies]
+npyz = { version = "0.8", features = ["npz"] }

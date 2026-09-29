@@ -23,6 +23,7 @@ ureq = "2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 include_dir = "0.7"
 base64 = "0.22"
+waypoint-core = { path = "../waypoint-core" }
 
 [profile.release]
 codegen-units = 1

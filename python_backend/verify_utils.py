@@ -57,6 +57,33 @@ def _prep(img: Image.Image) -> torch.Tensor:
     return tensor
 
 
+def match_points(img1: Image.Image, img2: Image.Image):
+    """DISK keypoints + LightGlue matching only. Returns
+    (pts1, pts2, n_kp1, n_kp2) with (M, 2) float32 matched keypoint
+    coordinates. RANSAC is done by the caller (the Rust backend uses this via
+    model_server.py)."""
+    disk, matcher = _get_models()
+
+    t1, t2 = _prep(img1), _prep(img2)
+    with torch.no_grad():
+        feats1 = disk(t1, n=MAX_KEYPOINTS, pad_if_not_divisible=True)[0]
+        feats2 = disk(t2, n=MAX_KEYPOINTS, pad_if_not_divisible=True)[0]
+        n1, n2 = int(feats1.keypoints.shape[0]), int(feats2.keypoints.shape[0])
+        empty = np.zeros((0, 2), dtype=np.float32)
+        if n1 < 8 or n2 < 8:
+            return empty, empty, n1, n2
+
+        kps1, kps2 = feats1.keypoints[None], feats2.keypoints[None]
+        lafs1 = KF.laf_from_center_scale_ori(kps1, torch.ones(1, kps1.shape[1], 1, 1, device=_device))
+        lafs2 = KF.laf_from_center_scale_ori(kps2, torch.ones(1, kps2.shape[1], 1, 1, device=_device))
+
+        dists, idxs = matcher(feats1.descriptors, feats2.descriptors, lafs1, lafs2)
+
+    pts1 = feats1.keypoints[idxs[:, 0]].cpu().numpy()
+    pts2 = feats2.keypoints[idxs[:, 1]].cpu().numpy()
+    return pts1, pts2, n1, n2
+
+
 def match_pair(img1: Image.Image, img2: Image.Image):
     """Return (inlier_count, total_matches) between two images via DISK
     keypoints + LightGlue matching + RANSAC geometric consensus."""

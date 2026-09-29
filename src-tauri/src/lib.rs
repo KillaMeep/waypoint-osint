@@ -23,6 +23,8 @@ use serde_json::{json, Map, Value};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
+use waypoint_core::pyserver::PyModels;
+use waypoint_core::{run as core_run, Cancel, Mode, RunArgs as CoreArgs, Sink};
 
 static BACKEND: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../python_backend");
 
@@ -51,7 +53,13 @@ impl Paths {
     // user's global uv cache.
     fn uv_python_dir(&self) -> PathBuf { self.runtime().join("uv-python") }
     fn venv(&self) -> PathBuf { self.runtime().join("venv") }
-    fn python_exe(&self) -> PathBuf { self.venv().join("Scripts").join("python.exe") }
+    // WAYPOINT_PYTHON lets a developer point at another interpreter (read-only use).
+    fn python_exe(&self) -> PathBuf {
+        match std::env::var_os("WAYPOINT_PYTHON") {
+            Some(p) => PathBuf::from(p),
+            None => self.venv().join("Scripts").join("python.exe"),
+        }
+    }
     fn deps_marker(&self) -> PathBuf { self.runtime().join(".deps_installed") }
     fn settings(&self) -> PathBuf { self.data.join("settings.json") }
     fn backend(&self) -> PathBuf { self.data.join("backend") }
@@ -60,8 +68,28 @@ impl Paths {
 struct AppState {
     paths: Paths,
     children: Mutex<HashSet<u32>>,
-    pipeline_pid: Mutex<Option<u32>>,
+    active_run: Mutex<Option<ActiveRun>>,
     image: Mutex<Option<PathBuf>>,
+}
+
+/// The pipeline run in flight: its cancel flag, and the model server it talks to.
+struct ActiveRun {
+    cancel: Cancel,
+    server_pid: Arc<Mutex<Option<u32>>>,
+}
+
+/// Forwards backend events to the webview.
+struct TauriSink {
+    app: AppHandle,
+}
+
+impl Sink for TauriSink {
+    fn event(&self, ev: Value) {
+        let _ = self.app.emit("pipeline-event", ev);
+    }
+    fn log(&self, line: &str) {
+        let _ = self.app.emit("pipeline-event", json!({ "event": "log", "message": line }));
+    }
 }
 
 impl AppState {
@@ -521,74 +549,92 @@ struct RunArgs {
 }
 
 /// Returns at spawn time. The webview releases its busy state on the
-/// `exit` event, which fires on normal exit and on crash alike.
-fn run_pipeline(app: AppHandle, mode: &str, args: RunArgs) -> Result<u32, String> {
+/// `exit` event, which is always sent once the run has ended, whether it
+/// finished, failed or was cancelled.
+fn run_pipeline(app: AppHandle, mode: Mode, args: RunArgs) -> Result<u32, String> {
     let state = app.state::<AppState>();
-    let mut running = state.pipeline_pid.lock().unwrap();
-    if running.is_some() {
+    let mut active = state.active_run.lock().unwrap();
+    if active.is_some() {
         return Err("A pipeline run is already in progress".into());
     }
     // Always the image the user picked through the app, never a path from the page.
     let image = state.image.lock().unwrap().clone().ok_or("No image selected")?;
-
-    let mut argv: Vec<String> = vec![mode.into(), "--image_path".into(), image.to_string_lossy().into_owned()];
-    if let Some(token) = read_settings(&state.paths).get("mapillaryToken").and_then(Value::as_str).filter(|t| !t.is_empty()) {
-        argv.extend(["--mapillary_token".into(), token.into()]);
+    let python = state.paths.python_exe();
+    if !python.exists() {
+        return Err("Python runtime is not installed. Run first-time setup.".into());
     }
-    let mut push = |flag: &str, v: Option<String>| {
-        if let Some(v) = v {
-            argv.extend([flag.to_string(), v]);
+
+    let mut ra = CoreArgs::new(mode.clone(), image);
+    ra.mapillary_token = read_settings(&state.paths)
+        .get("mapillaryToken")
+        .and_then(Value::as_str)
+        .filter(|t| !t.is_empty())
+        .map(str::to_string);
+    match mode {
+        Mode::Point => {
+            ra.lat = args.lat;
+            ra.lon = args.lon;
+            ra.radius_km = args.radius_km;
+            if let Some(v) = args.max_images { ra.max_images = v as usize; }
         }
-    };
-    if mode == "point" {
-        push("--lat", args.lat.map(|v| v.to_string()));
-        push("--lon", args.lon.map(|v| v.to_string()));
-        push("--radius_km", args.radius_km.map(|v| v.to_string()));
-        push("--max_images", args.max_images.map(|v| v.to_string()));
-    } else {
-        push("--num_samples", args.num_samples.map(|v| v.to_string()));
-        push("--num_runs", args.num_runs.map(|v| v.to_string()));
-        push("--retrieval_top_clusters", args.retrieval_top_clusters.map(|v| v.to_string()));
+        Mode::One => {
+            if let Some(v) = args.num_samples { ra.num_samples = v as usize; }
+            if let Some(v) = args.num_runs { ra.num_runs = v as usize; }
+            if let Some(v) = args.retrieval_top_clusters { ra.retrieval_top_clusters = v as usize; }
+        }
     }
 
-    let ev_app = app.clone();
-    let log_app = app.clone();
-    let proc = spawn_backend(
-        &state,
-        "run_pipeline.py",
-        &argv,
-        move |evt| { let _ = ev_app.emit("pipeline-event", evt); },
-        move |msg| { let _ = log_app.emit("pipeline-event", json!({ "event": "log", "message": msg })); },
-    )?;
-    let pid = proc.child.id();
-    *running = Some(pid);
-    drop(running);
+    let cancel = Cancel::new();
+    let server_pid: Arc<Mutex<Option<u32>>> = Arc::default();
+    *active = Some(ActiveRun { cancel: cancel.clone(), server_pid: server_pid.clone() });
+    drop(active);
 
-    let waiter = app.clone();
+    let script = state.paths.backend().join("model_server.py");
+    let cwd = state.paths.backend();
     thread::spawn(move || {
-        let code = proc.wait();
-        let state = waiter.state::<AppState>();
-        state.untrack(pid);
-        *state.pipeline_pid.lock().unwrap() = None;
-        let _ = waiter.emit("pipeline-event", json!({ "event": "exit", "code": code }));
+        let sink = TauriSink { app: app.clone() };
+        let log_app = app.clone();
+        let code = match PyModels::spawn(&python, &script, &cwd, move |s| {
+            let _ = log_app.emit("pipeline-event", json!({ "event": "log", "message": s }));
+        }) {
+            Ok(models) => {
+                let pid = models.pid();
+                *server_pid.lock().unwrap() = Some(pid);
+                app.state::<AppState>().track(pid);
+                let code = core_run(&ra, &*models, &sink, &cancel);
+                models.shutdown();
+                app.state::<AppState>().untrack(pid);
+                code
+            }
+            Err(e) => {
+                sink.event(json!({ "event": "error", "message": e.to_string() }));
+                1
+            }
+        };
+        *app.state::<AppState>().active_run.lock().unwrap() = None;
+        let _ = app.emit("pipeline-event", json!({ "event": "exit", "code": code }));
     });
-    Ok(pid)
+    Ok(0)
 }
 
 #[tauri::command]
 fn run_one(app: AppHandle, args: RunArgs) -> Result<u32, String> {
-    run_pipeline(app, "one", args)
+    run_pipeline(app, Mode::One, args)
 }
 
 #[tauri::command]
 fn run_point(app: AppHandle, args: RunArgs) -> Result<u32, String> {
-    run_pipeline(app, "point", args)
+    run_pipeline(app, Mode::Point, args)
 }
 
 #[tauri::command]
 fn cancel_run(state: State<'_, AppState>) {
-    if let Some(pid) = *state.pipeline_pid.lock().unwrap() {
-        kill_tree(pid);
+    if let Some(run) = state.active_run.lock().unwrap().as_ref() {
+        run.cancel.cancel();
+        // Killing the model server unblocks any request the backend is waiting on.
+        if let Some(pid) = *run.server_pid.lock().unwrap() {
+            kill_tree(pid);
+        }
     }
 }
 
@@ -632,7 +678,7 @@ pub fn run() {
             app.manage(AppState {
                 paths,
                 children: Mutex::default(),
-                pipeline_pid: Mutex::default(),
+                active_run: Mutex::default(),
                 image: Mutex::default(),
             });
             Ok(())
