@@ -7,166 +7,207 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-mark" viewBox="70 76 408 330">
+      <circle cx="408" cy="150" r="62" fill="none" stroke="var(--accent)" stroke-opacity=".5" stroke-width="10"/>
+      <path d="M104 150 L180 356 L256 214 L332 356 L408 150" fill="none" stroke="currentColor" stroke-width="36" stroke-linecap="round" stroke-linejoin="round"/>
+      <g fill="var(--bg)" stroke="currentColor" stroke-width="13"><circle cx="104" cy="150" r="20"/><circle cx="180" cy="356" r="20"/><circle cx="256" cy="214" r="20"/><circle cx="332" cy="356" r="20"/></g>
+      <circle cx="408" cy="150" r="36" fill="var(--accent)"/><circle cx="408" cy="150" r="12" fill="var(--bg)"/>
+    </symbol>
+    <symbol id="i-photo" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8.5" cy="9.5" r="1.7" fill="currentColor"/><path d="M4 17.5l5-5 4 4 2.5-2.5 4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="currentColor"/><g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4"/></g></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 13.2A8.5 8.5 0 1 1 10.8 3.5a6.6 6.6 0 0 0 9.7 9.7Z" fill="currentColor"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.5-2-3.4-2.3.9a7.6 7.6 0 0 0-1.7-1l-.3-2.5h-4l-.3 2.5a7.6 7.6 0 0 0-1.7 1l-2.3-.9-2 3.4L4.6 11a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.3-.9c.5.4 1.1.8 1.7 1l.3 2.5h4l.3-2.5c.6-.2 1.2-.6 1.7-1l2.3.9 2-3.4-2-1.5Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 10l3 2.5L7 15M12.5 15.5H17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M5 15V6a2 2 0 0 1 2-2h9" fill="none" stroke="currentColor" stroke-width="1.7"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4.5A1.5 1.5 0 0 1 16.5 20h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></symbol>
+    <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2" fill="currentColor"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  </svg>
+
   <!-- ================= First-run setup ================= -->
-  <section id="setupScreen" class="screen scroll hidden">
-    <div class="shell shell-narrow">
-      <div class="card setup-card">
-        <div class="card-head">
-          <h1 class="page-title">First-time setup</h1>
-          <p class="page-sub">Installing a portable Python runtime and model dependencies. This happens once and stays local to the app.</p>
-        </div>
-        <div id="setupStatus" class="setup-status">Ready to begin.</div>
-        <div class="progress track"><div id="setupBar" class="progress-fill"></div></div>
-        <div id="setupPct" class="setup-pct"></div>
-        <details class="raw"><summary>Show details</summary><div id="setupLog" class="log"></div></details>
-        <div class="card-actions"><button id="setupStartBtn" class="btn btn-primary">Start setup</button></div>
+  <section id="setupScreen" class="setup hidden">
+    <div class="setup-card">
+      <svg class="setup-mark"><use href="#i-mark"/></svg>
+      <h1>Set up Waypoint</h1>
+      <p class="muted">Waypoint installs a private Python runtime, PyTorch and the model dependencies inside its own data folder. This happens once and needs 6 to 8 GB of disk space.</p>
+      <div class="setup-progress">
+        <div class="setup-status-row"><span id="setupStatus">Ready to begin.</span><span id="setupPct" class="mono muted"></span></div>
+        <div class="bar"><i id="setupBar"></i></div>
       </div>
+      <details class="disclosure"><summary>Installer output</summary><pre id="setupLog" class="log"></pre></details>
+      <button id="setupStartBtn" class="btn btn-accent btn-block"><span class="btn-label">Start setup</span></button>
     </div>
   </section>
 
-  <!-- ================= Settings ================= -->
-  <section id="settingsScreen" class="screen scroll hidden">
-    <div class="shell shell-narrow">
-      <div class="page-head">
-        <h1 class="page-title">Settings</h1>
-        <button id="settingsCloseBtn" class="btn btn-ghost">&larr; Back</button>
-      </div>
-      <div class="card">
-        <div class="card-head">
-          <h2 class="card-title">API access</h2>
-          <p class="card-sub">Optional keys unlock extra imagery sources. All are free tiers.</p>
-        </div>
-        <label class="field">
-          <span class="field-label">Mapillary API token</span>
-          <span class="field-hint">Free at <a href="#" id="mapillaryLink">mapillary.com/dashboard/developers</a>. Without it, the Mapillary refinement step is skipped.</span>
-          <span class="input-wrap">
-            <input type="password" id="mapillaryTokenInput" class="input" placeholder="MLY|..." autocomplete="off" spellcheck="false" />
-            <button type="button" id="tokenReveal" class="input-affix" title="Show / hide">Show</button>
-          </span>
-        </label>
-        <div class="card-actions">
-          <button id="settingsSaveBtn" class="btn btn-primary">Save</button>
-          <span id="settingsSaved" class="save-note"></span>
-        </div>
-      </div>
-      <div class="card card-danger">
-        <div class="card-head">
-          <h2 class="card-title">Python environment</h2>
-          <p class="card-sub">Removes the app's downloaded Python runtime and every installed package (uv, the interpreter, PyTorch). Use this only if setup got into a bad state, the app walks through first-run setup again next launch.</p>
-        </div>
-        <div class="card-actions">
-          <button id="purgeEnvBtn" class="btn btn-danger">Purge Python install</button>
-          <span id="purgeStatus" class="save-note"></span>
-        </div>
-      </div>
-    </div>
-  </section>
+  <!-- ================= Main workspace ================= -->
+  <div id="mainScreen" class="app hidden">
+    <header class="topbar">
+      <div class="brand"><svg class="brand-mark"><use href="#i-mark"/></svg><span>Waypoint</span></div>
 
-  <!-- ================= Main (tabbed views) ================= -->
-  <main id="mainScreen" class="screen hidden">
-    <!-- Tab bar (also holds the theme + settings controls) -->
-    <nav class="viewnav">
-      <button class="tab is-active" data-view="analyze"><span class="tab-dot">1</span>Analyze</button>
-      <button class="tab" data-view="results" disabled><span class="tab-dot">2</span>Results<span id="tabResultsCount" class="tab-count"></span></button>
-      <button class="tab" data-view="refine"><span class="tab-dot">3</span>Refine</button>
-      <div class="viewnav-actions">
-        <button id="themeBtn" class="icon-btn" title="Toggle light / dark">
-          <svg class="i-sun" viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="4" fill="currentColor"/><g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></g></svg>
-          <svg class="i-moon" viewBox="0 0 24 24" width="18" height="18"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" fill="currentColor"/></svg>
-        </button>
-        <button id="settingsBtn" class="icon-btn" title="Settings">
-          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M19.4 13a7.6 7.6 0 0 0 .1-2l2-1.5-2-3.4-2.3.9a7.6 7.6 0 0 0-1.7-1l-.3-2.5h-4l-.3 2.5a7.6 7.6 0 0 0-1.7 1l-2.3-.9-2 3.4L4.5 11a7.6 7.6 0 0 0 0 2l-2 1.5 2 3.4 2.3-.9c.5.4 1.1.8 1.7 1l.3 2.5h4l.3-2.5c.6-.2 1.2-.6 1.7-1l2.3.9 2-3.4-2-1.5Z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
-        </button>
+      <div class="modes" role="tablist">
+        <button class="mode is-active" data-mode="locate" role="tab">Locate</button>
+        <button class="mode" data-mode="refine" role="tab">Refine</button>
       </div>
-    </nav>
 
-    <div class="views">
+      <div class="run-status">
+        <span id="runState" class="run-state">Idle</span>
+        <button id="cancelBtn" class="btn btn-quiet btn-xs hidden" title="Stop the running pipeline"><svg class="i"><use href="#i-stop"/></svg>Stop</button>
+      </div>
 
-      <!-- ---------- View: Analyze ---------- -->
-      <section id="view-analyze" class="view scroll is-active">
-        <div class="shell">
-          <div class="card">
-            <div class="card-head"><h2 class="card-title">Select an image</h2><p class="card-sub">Pick a photo taken outdoors: street, skyline, or landscape works best.</p></div>
-            <div class="picker">
-              <div id="imageDrop" class="dropzone" role="button" tabindex="0">
-                <div id="imageEmpty" class="dropzone-empty">
-                  <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8.5" cy="9.5" r="1.8" fill="currentColor"/><path d="M4 18l5-5 4 4 3-3 4 4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
-                  <span>No image selected</span><small>Click to browse</small>
-                </div>
-                <img id="imagePreview" class="dropzone-img hidden" alt="Selected image preview" />
+      <div class="topbar-actions">
+        <button id="logBtn" class="icon-btn" title="Pipeline log"><svg class="i"><use href="#i-terminal"/></svg></button>
+        <button id="themeBtn" class="icon-btn" title="Toggle light / dark"><svg class="i i-sun"><use href="#i-sun"/></svg><svg class="i i-moon"><use href="#i-moon"/></svg></button>
+        <button id="settingsBtn" class="icon-btn" title="Settings"><svg class="i"><use href="#i-gear"/></svg></button>
+      </div>
+      <div class="topbar-progress"><i id="overallBar"></i></div>
+    </header>
+
+    <div class="workspace">
+      <aside class="sidebar">
+
+        <!-- ---------- Locate panel ---------- -->
+        <div id="panel-locate" class="panel is-active">
+          <section class="block">
+            <div id="photo" class="photo is-empty" role="button" tabindex="0" aria-label="Choose a photo">
+              <img id="photoImg" alt="" />
+              <div class="photo-empty">
+                <svg class="i i-lg"><use href="#i-photo"/></svg>
+                <strong>Choose a photo</strong>
+                <span>or drop one anywhere on the window</span>
               </div>
-              <div class="picker-controls">
-                <button id="selectImageBtn" class="btn btn-secondary">Choose photo…</button>
-                <div class="params">
-                  <label class="field field-inline"><span class="field-label">Samples <span class="field-note" tabindex="0" data-tip="More samples = broader coarse search, slower">?</span></span><input type="number" id="numSamples" class="input" value="512" min="64" step="64" /></label>
-                  <label class="field field-inline"><span class="field-label">Runs <span class="field-note" tabindex="0" data-tip="Repeat the coarse locate and merge, more runs = steadier candidates">?</span></span><input type="number" id="numRuns" class="input" value="3" min="1" max="10" /></label>
-                </div>
-                <button id="runOneBtn" class="btn btn-primary btn-lg" disabled><span class="btn-label">Run full pipeline</span></button>
-              </div>
+              <button id="photoZoom" class="photo-zoom" title="View full size"><svg class="i"><use href="#i-expand"/></svg></button>
             </div>
-          </div>
-
-          <div class="card">
-            <div class="card-head row-head">
-              <div><h2 class="card-title">Pipeline</h2><p class="card-sub">Coarse localization, then per-candidate imagery refinement.</p></div>
-              <span id="overallProgressLabel" class="pill pill-muted">Idle</span>
+            <div id="photoMeta" class="photo-meta hidden">
+              <span id="photoName" class="photo-name"></span>
+              <button id="photoReplace" class="btn btn-quiet btn-xs">Replace</button>
             </div>
-            <div class="progress track track-slim"><div id="overallProgressBar" class="progress-fill"></div></div>
-            <ul id="stepList" class="steps"></ul>
-          </div>
+          </section>
 
-          <details class="raw card card-raw"><summary>Developer log: raw pipeline events</summary><div id="pipelineLog" class="log"></div></details>
-        </div>
-      </section>
+          <section class="block">
+            <div class="params">
+              <label class="field">
+                <span class="field-label">Samples <span class="tip" tabindex="0" data-tip="Coarse location samples per run. More is a broader search but slower. The default comes from a speed test during setup.">?</span></span>
+                <input type="number" id="numSamples" class="input mono" value="512" min="64" step="64" />
+              </label>
+              <label class="field">
+                <span class="field-label">Runs <span class="tip" tabindex="0" data-tip="Repeat the coarse locate and merge the results. More runs give steadier candidates.">?</span></span>
+                <input type="number" id="numRuns" class="input mono" value="3" min="1" max="10" />
+              </label>
+            </div>
+            <button id="runOneBtn" class="btn btn-accent btn-block" disabled><span class="btn-label">Locate photo</span></button>
+          </section>
 
-      <!-- ---------- View: Results ---------- -->
-      <section id="view-results" class="view">
-        <div id="resultsEmpty" class="empty empty-full">
-          <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path d="M12 21s7-5.5 7-11a7 7 0 1 0-14 0c0 5.5 7 11 7 11Z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="10" r="2.4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
-          <span>Run the pipeline on the Analyze tab to see candidate locations here.</span>
-        </div>
-        <div id="resultsBody" class="results-split hidden">
-          <div class="results-map-col">
-            <div id="resultsMap" class="map map-fill"></div>
-            <span id="noiseBadge" class="pill pill-muted map-badge hidden"></span>
-          </div>
-          <div class="results-list-col">
-            <div class="list-head">
-              <h2 class="card-title">Candidates</h2>
-              <p class="card-sub">Ranked by confidence. Click a card or match to refine it.</p>
+          <section id="stepsBlock" class="block hidden">
+            <h2 class="block-title">Pipeline</h2>
+            <ol id="stepList" class="steps"></ol>
+          </section>
+
+          <section id="resultsBlock" class="block hidden">
+            <div class="block-head">
+              <h2 class="block-title">Candidates</h2>
+              <span id="noiseBadge" class="tag hidden" title="Share of coarse samples that fit no cluster"></span>
             </div>
             <div id="clusterResults" class="candidates"></div>
-          </div>
+          </section>
         </div>
-      </section>
 
-      <!-- ---------- View: Refine ---------- -->
-      <section id="view-refine" class="view">
-        <div class="refine-split">
-          <div class="refine-left scroll">
-            <div class="card">
-              <div class="card-head"><h2 class="card-title">Refine a point</h2><p class="card-sub">Sent here from a result, or enter coordinates for a tight, exhaustively-verified search.</p></div>
-              <div class="refine-form">
-                <label class="field"><span class="field-label">Latitude</span><input type="number" id="zoomLat" class="input mono" step="0.00001" placeholder="—" /></label>
-                <label class="field"><span class="field-label">Longitude</span><input type="number" id="zoomLon" class="input mono" step="0.00001" placeholder="—" /></label>
-                <label class="field"><span class="field-label">Radius (km)</span><input type="number" id="zoomRadius" class="input" value="2" min="0.2" step="0.5" /></label>
-                <button id="runZoomBtn" class="btn btn-primary" disabled>Refine here</button>
-              </div>
-              <ul id="zoomSteps" class="steps steps-compact"></ul>
-              <details class="raw"><summary>Developer log: raw pipeline events</summary><div id="zoomLog" class="log"></div></details>
+        <!-- ---------- Refine panel ---------- -->
+        <div id="panel-refine" class="panel">
+          <section class="block">
+            <h2 class="block-title">Refine a point</h2>
+            <p class="block-sub">Search every street-level image in a small radius and verify each match. Send a point here from a candidate or match, type coordinates, or click the map.</p>
+            <div class="refine-grid">
+              <label class="field"><span class="field-label">Latitude</span><input type="number" id="zoomLat" class="input mono" step="0.00001" placeholder="0.00000" /></label>
+              <label class="field"><span class="field-label">Longitude</span><input type="number" id="zoomLon" class="input mono" step="0.00001" placeholder="0.00000" /></label>
+              <label class="field"><span class="field-label">Radius, km</span><input type="number" id="zoomRadius" class="input mono" value="2" min="0.2" step="0.5" /></label>
             </div>
-            <div id="zoomResults" class="candidates"></div>
-          </div>
-          <div class="refine-right">
-            <div id="refineMap" class="map map-fill"></div>
-          </div>
-        </div>
-      </section>
+            <button id="runZoomBtn" class="btn btn-accent btn-block" disabled><span class="btn-label">Search this area</span></button>
+            <p id="refineHint" class="hint">Refine uses the photo from Locate.</p>
+          </section>
 
+          <section id="zoomStepsBlock" class="block hidden">
+            <h2 class="block-title">Pipeline</h2>
+            <ol id="zoomSteps" class="steps"></ol>
+          </section>
+
+          <section id="zoomResultsBlock" class="block hidden">
+            <h2 class="block-title">Matches</h2>
+            <div id="zoomResults" class="sources-flat"></div>
+          </section>
+        </div>
+      </aside>
+
+      <main class="mapwrap">
+        <div id="map" class="map"></div>
+        <div class="map-overlay map-legend" id="legend">
+          <button class="legend-item" data-src="mapillary_matches"><i style="--c:var(--src-mly)"></i>Mapillary</button>
+          <button class="legend-item" data-src="google_sv_matches"><i style="--c:var(--src-gsv)"></i>Street View</button>
+          <button class="legend-item" data-src="panoramax_matches"><i style="--c:var(--src-pmx)"></i>Panoramax</button>
+        </div>
+        <button id="fitBtn" class="map-overlay map-fit icon-btn" title="Fit results"><svg class="i"><use href="#i-fit"/></svg></button>
+        <div id="mapHint" class="map-overlay map-hint hidden">Click the map to set the refine point</div>
+
+        <div id="logDrawer" class="drawer hidden">
+          <div class="drawer-head">
+            <span>Pipeline log</span>
+            <button id="logClose" class="icon-btn icon-btn-sm" title="Close"><svg class="i"><use href="#i-close"/></svg></button>
+          </div>
+          <pre id="pipelineLog" class="log log-drawer"></pre>
+        </div>
+      </main>
     </div>
-  </main>
+  </div>
+
+  <!-- ================= Settings dialog ================= -->
+  <dialog id="settingsDialog" class="dialog">
+    <form method="dialog" class="dialog-head">
+      <h2>Settings</h2>
+      <button class="icon-btn icon-btn-sm" value="close" title="Close"><svg class="i"><use href="#i-close"/></svg></button>
+    </form>
+    <section class="dialog-section">
+      <h3>Mapillary</h3>
+      <p class="muted">A free token adds Mapillary imagery to refinement. Without it, Waypoint skips that source. Get one at <a href="#" id="mapillaryLink">mapillary.com/dashboard/developers</a>.</p>
+      <div class="input-wrap">
+        <input type="password" id="mapillaryTokenInput" class="input mono" autofocus placeholder="MLY|..." autocomplete="off" spellcheck="false" />
+        <button type="button" id="tokenReveal" class="input-affix">Show</button>
+      </div>
+      <div class="row">
+        <button id="settingsSaveBtn" class="btn btn-accent btn-sm">Save token</button>
+        <span id="settingsSaved" class="note"></span>
+      </div>
+    </section>
+    <section class="dialog-section">
+      <h3>Hardware</h3>
+      <p id="hardwareInfo" class="muted">Unknown until setup runs.</p>
+    </section>
+    <section class="dialog-section danger">
+      <h3>Python environment</h3>
+      <p class="muted">Delete the downloaded runtime and every installed package (uv, the interpreter, PyTorch). Use this only if setup broke. Waypoint runs first-time setup again on the next launch.</p>
+      <div class="row">
+        <button id="purgeEnvBtn" class="btn btn-danger btn-sm">Purge Python install</button>
+        <span id="purgeStatus" class="note"></span>
+      </div>
+    </section>
+  </dialog>
+
+  <!-- ================= Photo lightbox ================= -->
+  <div id="lightbox" class="lightbox hidden" role="dialog" aria-label="Photo">
+    <img id="lightboxImg" alt="" />
+  </div>
+
+  <!-- ================= Drop overlay ================= -->
+  <div id="dropOverlay" class="drop-overlay hidden"><div><svg class="i i-lg"><use href="#i-photo"/></svg>Drop to load photo</div></div>
+
+  <div id="toast" class="toast hidden"></div>
 
   <script src="vendor/leaflet/leaflet.js"></script>
+  <script src="api.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

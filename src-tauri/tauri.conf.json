@@ -1,0 +1,45 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Waypoint",
+  "version": "0.2.0",
+  "identifier": "com.osint.waypoint",
+  "build": {
+    "frontendDist": "../src/renderer"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Waypoint",
+        "width": 1240,
+        "height": 820,
+        "minWidth": 900,
+        "minHeight": 640,
+        "center": true,
+        "dragDropEnabled": true,
+        "backgroundColor": "#0f1114"
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: blob: https://*.tile.openstreetmap.org",
+        "connect-src": "ipc: http://ipc.localhost"
+      },
+      "dangerousDisableAssetCspModification": ["style-src"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ]
+  }
+}
