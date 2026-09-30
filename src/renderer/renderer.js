@@ -693,10 +693,22 @@ $('settingsBtn').addEventListener('click', async () => {
   $('settingsSaved').textContent = '';
   $('purgeStatus').textContent = '';
   resetPurgeButton();
+  const env = await window.api.getEnvStatus();
+  renderModels(s, env);
+  $('engineInfo').textContent = env.native
+    ? 'Native: ONNX Runtime with DirectML (CPU fallback). No Python needed.'
+    : 'Python: PyTorch through the local model server.';
+  $('nativeUpgrade').classList.toggle('hidden', !!env.native);
   const hw = s.hardware;
+  // The native engine records what it runs on (accel); older Python installs
+  // only know about NVIDIA cards (hasGpu / gpuName from nvidia-smi).
+  const device = !hw ? null
+    : hw.accel === 'CPU' ? 'CPU (no DirectML GPU)'
+    : hw.accel === 'DirectML' ? (hw.gpuName ? `${hw.gpuName} via DirectML` : 'GPU via DirectML')
+    : hw.hasGpu ? (hw.gpuName || 'NVIDIA GPU')
+    : 'CPU (no NVIDIA GPU found)';
   $('hardwareInfo').textContent = !hw ? 'Unknown until setup runs.'
-    : !hw.hasGpu ? 'No NVIDIA GPU found. Waypoint runs on the CPU, which is slower.'
-    : [hw.gpuName || 'NVIDIA GPU', hw.vramMb ? `${(hw.vramMb / 1024).toFixed(0)} GB VRAM` : null,
+    : [device, hw.vramMb ? `${(hw.vramMb / 1024).toFixed(0)} GB VRAM` : null,
       hw.samplesPerSec ? `${Math.round(hw.samplesPerSec)} samples/s measured` : null].filter(Boolean).join('  ·  ');
   settingsDialog.showModal();
 });
@@ -714,11 +726,39 @@ $('settingsSaveBtn').addEventListener('click', async () => {
 });
 $('mapillaryLink').addEventListener('click', (e) => { e.preventDefault(); window.api.openExternal('https://mapillary.com/dashboard/developers'); });
 
+/* ---------- Model (PLONK variant) */
+const MODEL_INFO = {
+  osv5m: 'Street-level photos (OpenStreetView-5M). The default, and the best fit for street scenes.',
+  yfcc: 'General photos from Flickr (YFCC100M): landmarks, landscapes, indoor and tourist shots.',
+  inat: 'Nature photos from iNaturalist: plants, animals and wild outdoor scenes.',
+};
+
+// Rows from env.models ({ key, label, native }). A model is usable when it
+// runs natively, or on the Python engine when one is installed.
+function renderModels(settings, env) {
+  const python = env.pythonInstalled && env.depsInstalled;
+  const current = settings.plonkModel || 'osv5m';
+  $('modelList').innerHTML = (env.models || []).map((m) => {
+    const usable = m.native || python;
+    const status = m.native ? 'Native' : python ? 'Python engine' : 'Not installed';
+    return `<label class="model-row${usable ? '' : ' is-off'}">
+      <input type="radio" name="plonkModel" value="${m.key}" ${m.key === current ? 'checked' : ''} ${usable ? '' : 'disabled'} />
+      <span class="model-text"><b>${esc(m.label)}</b><span class="note">${esc(MODEL_INFO[m.key] || '')}</span></span>
+      <span class="model-side"><span class="note">${esc(status)}</span></span>
+    </label>`;
+  }).join('');
+}
+$('modelList').addEventListener('change', async (e) => {
+  if (e.target.name !== 'plonkModel') return;
+  await window.api.setSettings({ plonkModel: e.target.value });
+  toast(`Model: ${e.target.closest('.model-row').querySelector('b').textContent}`);
+});
+
 // Two-step confirm inside the dialog; no native confirm() popup.
 let purgeArmed = null;
 function resetPurgeButton() {
   clearTimeout(purgeArmed); purgeArmed = null;
-  $('purgeEnvBtn').textContent = 'Purge Python install';
+  $('purgeEnvBtn').textContent = 'Delete downloads';
 }
 $('purgeEnvBtn').addEventListener('click', async () => {
   const btn = $('purgeEnvBtn');
@@ -730,7 +770,7 @@ $('purgeEnvBtn').addEventListener('click', async () => {
   }
   resetPurgeButton();
   btn.disabled = true;
-  $('purgeStatus').textContent = 'Purging…';
+  $('purgeStatus').textContent = 'Deleting…';
   const result = await window.api.purgeEnv();
   $('purgeStatus').textContent = result.ok ? 'Done. Restart Waypoint to run setup again.' : `Failed: ${result.error}`;
   btn.disabled = false;
@@ -739,14 +779,100 @@ $('purgeEnvBtn').addEventListener('click', async () => {
 /* ============================================================ First-run setup */
 const setupLog = $('setupLog');
 let depsCrawl = null;
+// 'first' = first-run setup (native, falling back to Python);
+// 'native' = the Settings upgrade from a Python install (native only).
+let setupMode = 'first';
+let nativeSetup = false; // the native install is the one running (it reports its own progress)
+
+$('nativeInstallBtn').addEventListener('click', () => {
+  if (state.busy) { toast('Stop the running pipeline first.', true); return; }
+  settingsDialog.close();
+  setupMode = 'native';
+  document.querySelector('#setupScreen h1').textContent = 'Install the native engine';
+  document.querySelector('#setupScreen p.muted').textContent =
+    'Waypoint downloads ONNX Runtime and its models (about 3 GB). Runs then need no Python. Your Python install stays as a fallback until you delete it.';
+  $('setupBackBtn').classList.remove('hidden');
+  showScreen('setupScreen');
+  $('setupStartBtn').click();
+});
+$('setupBackBtn').addEventListener('click', () => showScreen('mainScreen'));
 function setupAppend(text) { setupLog.textContent += String(text).replace(/\s+$/, '') + '\n'; setupLog.scrollTop = setupLog.scrollHeight; }
+
+// Steps shown beside the dial. The native route is the default; the Python
+// route replaces it when setup falls back (stage python_env).
+const NATIVE_STEPS = [
+  ['runtime', 'ONNX Runtime', 'Inference runtime and DirectML, from NuGet'],
+  ['models', 'Models', 'PLONK (3 models), StreetCLIP, DINOv2, DISK, LightGlue'],
+  ['speed', 'Speed test', 'Picks a default for Samples'],
+];
+const PYTHON_STEPS = [
+  ['manager', 'Python manager', 'uv'],
+  ['python', 'Python 3.11', 'Private interpreter and virtual environment'],
+  ['torch', 'PyTorch', 'CUDA build when an NVIDIA card is found'],
+  ['deps', 'Pipeline packages', 'PLONK, kornia, transformers'],
+  ['speed', 'Speed test', 'Picks a default for Samples'],
+];
+let setupSteps = NATIVE_STEPS;
+let stepStates = {};
+function renderSteps() {
+  $('setupSteps').innerHTML = setupSteps.map(([key, name, sub]) => `<li data-state="${stepStates[key] || 'pending'}">
+    <span class="step-dot">${icon('check', 'i i-check')}${icon('close', 'i i-x')}</span>
+    <span><div class="step-name">${esc(name)}</div><div class="step-sub">${esc(sub)}</div></span>
+  </li>`).join('');
+}
+function useSteps(list) { setupSteps = list; stepStates = {}; renderSteps(); }
+// Mark `key` active and every step before it done.
+function setStep(key) {
+  const idx = setupSteps.findIndex(([k]) => k === key);
+  if (idx < 0 || stepStates[key] === 'active') return;
+  setupSteps.forEach(([k], i) => { if (i < idx) stepStates[k] = 'done'; });
+  stepStates[key] = 'active';
+  renderSteps();
+}
+function endSteps(ok) {
+  for (const [k] of setupSteps) {
+    if (ok) stepStates[k] = 'done';
+    else if (stepStates[k] === 'active') stepStates[k] = 'failed';
+  }
+  renderSteps();
+}
+
+const RING = 2 * Math.PI * 52;
+let setupPct = 0;
 function setupBar(pct, status) {
-  $('setupBar').style.width = `${clamp(pct, 0, 100)}%`;
+  pct = clamp(pct, 0, 100);
+  setupPct = pct;
+  $('setupRing').style.strokeDashoffset = String(RING * (1 - pct / 100));
+  $('setupDial').setAttribute('aria-valuenow', String(Math.round(pct)));
   if (status) $('setupStatus').textContent = status;
-  $('setupPct').textContent = pct >= 100 ? 'Done' : `${Math.round(pct)}%`;
+  $('setupPct').textContent = `${Math.floor(pct)}%`;
+}
+function setDial(state) { $('setupDial').dataset.state = state; }
+
+// Bytes, rate and time left for the native downloads (rate smoothed).
+const fmtSize = (n) => (n >= 1e9 ? `${(n / 1e9).toFixed(2)} GB` : `${Math.round(n / 1e6)} MB`);
+let rate = { t: 0, done: 0, bps: 0 };
+function setupBytes(done, total) {
+  const now = performance.now();
+  if (rate.t && done > rate.done) {
+    const inst = ((done - rate.done) * 1000) / (now - rate.t);
+    rate.bps = rate.bps ? rate.bps * 0.85 + inst * 0.15 : inst;
+  }
+  rate = { t: now, done, bps: rate.bps };
+  const parts = [`${fmtSize(done)} of ${fmtSize(total)}`];
+  if (rate.bps > 0 && done < total) {
+    parts.push(`${(rate.bps / 1e6).toFixed(1)} MB/s`);
+    const eta = formatEta((total - done) / rate.bps);
+    if (eta) parts.push(`${eta} left`);
+  }
+  $('setupDetail').textContent = parts.join(' · ');
 }
 function stopCrawl() { if (depsCrawl) { clearInterval(depsCrawl); depsCrawl = null; } }
 function setupPhase(msg) {
+  if (/Downloading uv|Extracting uv/.test(msg)) setStep('manager');
+  else if (/Installing Python|Creating virtual environment/.test(msg)) setStep('python');
+  else if (/Checking for an NVIDIA GPU|No NVIDIA GPU|GPU detected/.test(msg)) setStep('torch');
+  else if (/Installing pipeline dependencies/.test(msg)) setStep('deps');
   const dl = msg.match(/Downloading uv\.\.\.\s*(\d+)%/);
   if (dl) return setupBar(parseInt(dl[1], 10) * 0.25, 'Downloading Python manager');
   if (/Downloading uv \(/.test(msg))            return setupBar(2,  'Downloading Python manager');
@@ -759,50 +885,76 @@ function setupPhase(msg) {
   if (/Installing pipeline dependencies/.test(msg)) {
     setupBar(78, 'Installing dependencies');
     stopCrawl();
-    depsCrawl = setInterval(() => { const w = parseFloat($('setupBar').style.width) || 78; if (w < 95) setupBar(w + 0.4); }, 700);
+    depsCrawl = setInterval(() => { if (setupPct < 95) setupBar(setupPct + 0.4); }, 700);
   }
 }
 $('setupStartBtn').addEventListener('click', async () => {
   const btn = $('setupStartBtn');
-  btn.disabled = true; btn.classList.add('busy');
+  btn.disabled = true;
+  btn.classList.add('hidden'); // the dial and steps show progress; back again as Retry on failure
+  $('setupBackBtn').disabled = true;
+  useSteps(NATIVE_STEPS);
+  rate = { t: 0, done: 0, bps: 0 };
+  $('setupDetail').textContent = '';
+  setDial('running');
   setupBar(1, 'Starting…');
-  const result = await window.api.runEnvSetup();
-  btn.classList.remove('busy'); stopCrawl();
+  const result = await window.api.runEnvSetup({ nativeOnly: setupMode === 'native' });
+  $('setupBackBtn').disabled = false;
+  stopCrawl();
   if (result.ok) {
     setupBar(100, 'Setup complete');
-    setTimeout(async () => { showScreen('mainScreen'); await applyRecommendedSamples(); }, 700);
+    endSteps(true);
+    setDial('done');
+    $('setupPct').textContent = 'Done';
+    setTimeout(async () => { showScreen('mainScreen'); await applyRecommendedSamples(); }, 1400);
   } else {
     setupAppend(`Setup failed: ${result.error}`);
-    $('setupStatus').textContent = 'Setup failed. See the installer output.';
+    endSteps(false);
+    setDial('error');
+    $('setupStatus').textContent = 'Setup failed';
+    $('setupDetail').textContent = 'See the installer output below.';
+    document.querySelector('#setupScreen .disclosure').open = true;
     btn.querySelector('.btn-label').textContent = 'Retry setup';
     btn.disabled = false;
+    btn.classList.remove('hidden');
   }
 });
 window.api.onEnvProgress((p) => {
-  if (p.event === 'log') {
+  if (p.event === 'progress') {
+    setupBar(p.pct, p.status);
+    if (/ONNX Runtime/.test(p.status)) setStep('runtime');
+    else if (/models/i.test(p.status)) setStep('models');
+    if (p.total) setupBytes(p.done, p.total);
+  } else if (p.event === 'log') {
     setupAppend(p.message);
     for (const line of String(p.message).split('\n')) if (line.trim()) setupPhase(line);
   } else if (p.event === 'stage_start') {
     setupAppend(`--- ${p.stage} ---`);
-    if (p.stage === 'calibrate') { stopCrawl(); setupBar(96, 'Measuring sampling speed'); }
+    if (p.stage === 'python_env') { useSteps(PYTHON_STEPS); $('setupDetail').textContent = ''; }
+    if (p.stage === 'pipeline_deps') setStep('deps');
+    if (p.stage === 'calibrate') { setStep('speed'); $('setupDetail').textContent = 'Timing real sampling batches'; }
+    if (p.stage === 'calibrate') { stopCrawl(); if (setupMode === 'first' && !nativeSetup) setupBar(96, 'Measuring sampling speed'); }
+    if (p.stage === 'native_env') nativeSetup = true;
   } else if (p.event === 'stage_done') {
     setupAppend(`${p.stage} done.`);
     if (p.stage === 'python_env' && 'gpu_detected' in p)
       setupAppend(p.gpu_detected ? 'NVIDIA GPU detected.' : 'No GPU detected, CPU mode (slower).');
-    if (p.stage === 'calibrate' && p.samples_per_sec)
+    if (p.stage === 'calibrate' && p.samples_per_sec) {
       setupAppend(`Measured ${p.samples_per_sec.toFixed(0)} samples/sec, default Samples set to ${p.recommended_samples}.`);
+      $('setupDetail').textContent = `${p.samples_per_sec.toFixed(0)} samples/s · default Samples ${p.recommended_samples}`;
+    }
   }
 });
 
 /* ============================================================ Startup */
 
-// Setup times a real calibration batch (see calibrate.py) and stores the
-// result as hardware.recommendedSamples. VRAM turned out to be a poor proxy
+// Setup times real sampling batches (plonk::throughput, or calibrate.py on
+// the Python engine) and stores hardware.recommendedSamples. VRAM turned out to be a poor proxy
 // for throughput; the VRAM tiers below only cover settings written before
 // calibration existed, until the user re-runs setup.
 function recommendedSamples(hw) {
+  if (hw && hw.recommendedSamples) return hw.recommendedSamples;
   if (!hw || !hw.hasGpu) return 512;
-  if (hw.recommendedSamples) return hw.recommendedSamples;
   const vramGb = (hw.vramMb || 0) / 1024;
   if (vramGb >= 16) return 4096;
   if (vramGb >= 12) return 2048;
@@ -815,9 +967,10 @@ async function applyRecommendedSamples() {
 }
 
 (async () => {
+  renderSteps();
   resetSteps('full');
   refreshRunButtons();
   const status = await window.api.getEnvStatus();
-  if (status.pythonInstalled && status.depsInstalled) { showScreen('mainScreen'); await applyRecommendedSamples(); }
+  if (status.native || (status.pythonInstalled && status.depsInstalled)) { showScreen('mainScreen'); await applyRecommendedSamples(); }
   else showScreen('setupScreen');
 })();

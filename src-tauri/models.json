@@ -1,0 +1,94 @@
+{
+  "files": [
+    {
+      "name": "streetclip_vision.onnx",
+      "bytes": 1214333250,
+      "sha256": "f28cb3ff3f2ed69d43f31d8eea00498f48180c4078a09aa910ed039aba6ffa5d"
+    },
+    {
+      "name": "disk_unet.onnx",
+      "bytes": 4388380,
+      "sha256": "47ebf56f396249791915a101fba2f7346ea9ed36d60144b016af96c61dd7f98f"
+    },
+    {
+      "name": "lg_front.onnx",
+      "bytes": 137800,
+      "sha256": "3d26471ae3f835297a27d2fa54ae9db79720e119514d76e1261bd6b2462fe483"
+    },
+    {
+      "name": "lg_layer0.onnx",
+      "bytes": 5058333,
+      "sha256": "418492373bda83d36252712f78cb1db5a1a118a8329358b4829b13f8b87f7179"
+    },
+    {
+      "name": "lg_layer1.onnx",
+      "bytes": 5058333,
+      "sha256": "f6a2c9ac52cad88b15e9961829521bd1c44f43228f31a196b6cbf58d4af676eb"
+    },
+    {
+      "name": "lg_layer2.onnx",
+      "bytes": 5058333,
+      "sha256": "3b0e41ee55d9b7a0ea95e884c6aeef0a0695cc96afc721383f26c63682c6f50c"
+    },
+    {
+      "name": "lg_layer3.onnx",
+      "bytes": 5058333,
+      "sha256": "68c00b6bcbecb95627eb0caf9d0bd739fa706517c8ceb6d7b66b26047a3ebda8"
+    },
+    {
+      "name": "lg_layer4.onnx",
+      "bytes": 5058333,
+      "sha256": "45f11d7d36a9835ae6b3815c375f86a3bd63a06b9e332699467f0a45e7a1e37e"
+    },
+    {
+      "name": "lg_layer5.onnx",
+      "bytes": 5058333,
+      "sha256": "06208eafee116630fd98bfaa8ec97742788eb77be16a2eabc7ee3dd39c0fce4e"
+    },
+    {
+      "name": "lg_layer6.onnx",
+      "bytes": 5058333,
+      "sha256": "ae8364c15dbb16befba2ec535258a0b618810f8b31c16d7b1e79117e270add96"
+    },
+    {
+      "name": "lg_layer7.onnx",
+      "bytes": 5058333,
+      "sha256": "daa33b674cf7e50e041441213290592bb834b37240bdd17bf6dc7e88dc0a4a78"
+    },
+    {
+      "name": "lg_layer8.onnx",
+      "bytes": 5058333,
+      "sha256": "169d0ca06bbc102c26b9ac1c9d62835f1c764299bd95e8f7a06249f30736d1de"
+    },
+    {
+      "name": "lg_post.onnx",
+      "bytes": 18164,
+      "sha256": "8930e67cdc4d0d212a860bf80ca10bd7726d83e52f512121cdef4d1a52c045b8"
+    },
+    {
+      "name": "lg_assign.onnx",
+      "bytes": 2382893,
+      "sha256": "ddace2667d842a69725c8e6112b3fd1111f42cd27b51885205ae8fcea1390880"
+    },
+    {
+      "name": "plonk_osv5m_step.onnx",
+      "bytes": 144272160,
+      "sha256": "d0c5a8e14d0bf284cca9ff7d6e1074202a09c3a85b74bac77b9edd29590745d8"
+    },
+    {
+      "name": "dinov2_vitl14_reg.onnx",
+      "bytes": 1214511816,
+      "sha256": "a52dddb65b9b4133a10c201a2408340bab150acc738ad641f5c8d1708ca6c031"
+    },
+    {
+      "name": "plonk_yfcc_step.onnx",
+      "bytes": 144272160,
+      "sha256": "7208345304e378431462146dacc84899b95c9d3ca13f6e790842ce511dd13af7"
+    },
+    {
+      "name": "plonk_inat_step.onnx",
+      "bytes": 36721235,
+      "sha256": "04a00b7fd0db6c0aecebeb744dc39ea13be94830017bff2ddd0780317331966d"
+    }
+  ]
+}

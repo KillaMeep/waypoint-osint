@@ -1,11 +1,17 @@
 //! Waypoint desktop shell.
 //!
-//! The Rust side owns everything the webview can't do on its own: the
-//! portable Python runtime (uv + a managed interpreter + PyTorch), spawning the
-//! NDJSON-emitting pipeline scripts, settings, and native dialogs. The
-//! geolocation work itself stays in `python_backend/` (PLONK, kornia, ...),
-//! which is embedded in the binary and unpacked next to the runtime at launch
-//! so the release build is a single portable exe.
+//! The Rust side owns everything the webview can't do on its own: installing
+//! the inference engine, running the pipeline (`waypoint-core`), settings, and
+//! native dialogs.
+//!
+//! Two engines, picked per run:
+//! * native: ONNX Runtime (DirectML, CPU fallback) with the exported PLONK,
+//!   StreetCLIP, DISK and LightGlue models. No Python. First-run setup
+//!   downloads the runtime from NuGet and the models from MODEL_BASE_URL.
+//! * Python: the uv-managed runtime with PyTorch, serving the networks through
+//!   `python_backend/model_server.py`. Used when the native files are absent
+//!   (older installs, or when the model host can't be reached during setup).
+//!   The backend scripts are embedded and unpacked at launch.
 
 use std::collections::HashSet;
 use std::fs;
@@ -23,6 +29,10 @@ use serde_json::{json, Map, Value};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
+use sha2::{Digest, Sha256};
+use waypoint_core::native;
+use waypoint_core::onnx::{init_runtime, Accel};
+use waypoint_core::plonk::{self, PlonkStep};
 use waypoint_core::pyserver::PyModels;
 use waypoint_core::{run as core_run, Cancel, Mode, RunArgs as CoreArgs, Sink};
 
@@ -35,6 +45,41 @@ const CUDA_TORCH_INDEX: &str = "https://download.pytorch.org/whl/cu128";
 // Aim the default Samples value at ~10 s of sampling for one run.
 const CALIBRATION_TARGET_SECONDS: f64 = 10.0;
 const IMAGE_EXTS: [&str; 5] = ["jpg", "jpeg", "png", "bmp", "webp"];
+
+// Native engine files. Every one is checked against a pinned SHA-256 before
+// use, so the hosts only serve bytes. WAYPOINT_MODEL_URL overrides the model
+// host (e.g. a local mirror); tools/export/make_manifest.py writes models.json.
+const MODEL_BASE_URL: &str = "https://huggingface.co/killameep/waypoint-models/resolve/main";
+const MODEL_MANIFEST: &str = include_str!("../models.json");
+
+/// A DLL taken from an official NuGet package.
+struct NugetFile {
+    package: &'static str,
+    version: &'static str,
+    package_bytes: u64,
+    member: &'static str,
+    file: &'static str,
+    sha256: &'static str,
+}
+
+const RUNTIME_FILES: [NugetFile; 2] = [
+    NugetFile {
+        package: "microsoft.ml.onnxruntime.directml",
+        version: "1.24.4",
+        package_bytes: 12_458_649,
+        member: "runtimes/win-x64/native/onnxruntime.dll",
+        file: "onnxruntime.dll",
+        sha256: "e7eedec6a6f26dc39dc948276a75ef6d2bee3fff944d874ceed0bbd3b97bff40",
+    },
+    NugetFile {
+        package: "microsoft.ai.directml",
+        version: "1.15.4",
+        package_bytes: 202_292_617,
+        member: "bin/x64-win/DirectML.dll",
+        file: "DirectML.dll",
+        sha256: "9c9e6d822561c6c41b90e6994b3e8857cf1d66dbfb1e0c4c799c7c89b4e92da1",
+    },
+];
 
 // Folder name kept from the Electron build (its `userData` dir), so an
 // existing install keeps its multi-GB runtime and settings after the port.
@@ -61,6 +106,8 @@ impl Paths {
         }
     }
     fn deps_marker(&self) -> PathBuf { self.runtime().join(".deps_installed") }
+    fn ort_dir(&self) -> PathBuf { self.data.join("ort") }
+    fn onnx_dir(&self) -> PathBuf { self.data.join("onnx") }
     fn settings(&self) -> PathBuf { self.data.join("settings.json") }
     fn backend(&self) -> PathBuf { self.data.join("backend") }
 }
@@ -277,11 +324,26 @@ fn settings_set(state: State<'_, AppState>, settings: Map<String, Value>) -> Res
 
 // ---------------------------------------------------------------- environment
 
+/// Every model file the native engine installs (src-tauri/models.json).
+fn manifest_models() -> Result<Vec<Value>, String> {
+    let manifest: Value = serde_json::from_str(MODEL_MANIFEST).map_err(|e| e.to_string())?;
+    Ok(manifest["files"].as_array().ok_or_else(|| "bad model manifest".to_string())?.clone())
+}
+
 #[tauri::command]
 fn env_status(state: State<'_, AppState>) -> Value {
+    let loc = native::locate(&state.paths.data);
+    let models: Vec<Value> = plonk::VARIANTS
+        .iter()
+        .map(|v| json!({ "key": v.key, "label": v.label, "native": loc.as_ref().is_some_and(|l| l.has(v.key)) }))
+        .collect();
     json!({
         "pythonInstalled": state.paths.python_exe().exists(),
         "depsInstalled": state.paths.deps_marker().exists(),
+        // The native engine counts as installed once every PLONK model is: an
+        // older install with only OSV-5M is offered the (incremental) install.
+        "native": loc.as_ref().is_some_and(|l| plonk::VARIANTS.iter().all(|v| l.has(v.key))),
+        "models": models,
     })
 }
 
@@ -378,6 +440,187 @@ fn install_env(state: &AppState, log: &dyn Fn(&str)) -> Result<Value, String> {
     Ok(gpu)
 }
 
+fn sha256_file(path: &Path) -> Option<String> {
+    let mut f = fs::File::open(path).ok()?;
+    let mut h = Sha256::new();
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let n = f.read(&mut buf).ok()?;
+        if n == 0 {
+            break;
+        }
+        h.update(&buf[..n]);
+    }
+    Some(format!("{:x}", h.finalize()))
+}
+
+/// Stream `url` into `dest`, returning its SHA-256. `on_bytes` gets each chunk size.
+fn fetch(url: &str, dest: &Path, on_bytes: &mut dyn FnMut(u64)) -> Result<String, String> {
+    let resp = ureq::get(url).call().map_err(|e| format!("Download failed: {e}"))?;
+    let mut reader = resp.into_reader();
+    let mut file = fs::File::create(dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+    let mut h = Sha256::new();
+    let mut buf = vec![0u8; 256 * 1024];
+    loop {
+        let n = reader.read(&mut buf).map_err(|e| format!("Download failed: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        file.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+        h.update(&buf[..n]);
+        on_bytes(n as u64);
+    }
+    file.flush().map_err(|e| e.to_string())?;
+    Ok(format!("{:x}", h.finalize()))
+}
+
+/// Why the native engine could not be installed.
+enum NativeError {
+    /// The model host can't be reached, or the engine can't run on this
+    /// machine. First-run setup falls back to the Python runtime.
+    Unavailable(String),
+    /// A download or integrity check failed part-way. Retrying is the fix;
+    /// starting a multi-GB Python install instead would not be.
+    Failed(String),
+}
+
+impl From<String> for NativeError {
+    fn from(e: String) -> Self {
+        NativeError::Failed(e)
+    }
+}
+
+/// Download the native engine: ONNX Runtime + DirectML from NuGet and the
+/// exported models (all three PLONK models) from the model host. Files already
+/// present with the right hash are kept. `progress(done, total, status)` (bytes)
+/// drives the setup screen.
+fn install_native(state: &AppState, progress: &dyn Fn(u64, u64, &str), log: &dyn Fn(&str)) -> Result<(), NativeError> {
+    let p = &state.paths;
+    let models = manifest_models()?;
+    let base = std::env::var("WAYPOINT_MODEL_URL").unwrap_or_else(|_| MODEL_BASE_URL.to_string());
+    let base = base.trim_end_matches('/');
+
+    // Nothing else is worth fetching if the model host isn't there.
+    let first = models[0]["name"].as_str().unwrap_or_default();
+    ureq::head(&format!("{base}/{first}"))
+        .call()
+        .map_err(|e| NativeError::Unavailable(format!("the model files are not available at {base} ({e})")))?;
+
+    let total: u64 = RUNTIME_FILES.iter().map(|f| f.package_bytes).sum::<u64>()
+        + models.iter().map(|m| m["bytes"].as_u64().unwrap_or(0)).sum::<u64>();
+    let done = std::cell::Cell::new(0u64);
+    let last = std::cell::Cell::new(-1i64);
+    let tick = |n: u64, status: &str| {
+        done.set(done.get() + n);
+        let permille = (done.get() * 1000 / total.max(1)) as i64;
+        if permille != last.get() {
+            last.set(permille);
+            progress(done.get(), total, status);
+        }
+    };
+
+    fs::create_dir_all(p.ort_dir()).map_err(|e| e.to_string())?;
+    fs::create_dir_all(p.onnx_dir()).map_err(|e| e.to_string())?;
+
+    for f in &RUNTIME_FILES {
+        let dest = p.ort_dir().join(f.file);
+        if sha256_file(&dest).as_deref() == Some(f.sha256) {
+            tick(f.package_bytes, "Downloading ONNX Runtime");
+            continue;
+        }
+        log(&format!("Downloading {} {} from NuGet...", f.package, f.version));
+        let url = format!("https://api.nuget.org/v3-flatcontainer/{0}/{1}/{0}.{1}.nupkg", f.package, f.version);
+        let pkg = p.ort_dir().join(format!("{}.nupkg.part", f.package));
+        fetch(&url, &pkg, &mut |n| tick(n, "Downloading ONNX Runtime"))?;
+        // Scoped so the archive is closed before the package file is deleted.
+        let bytes = {
+            let mut zip = zip::ZipArchive::new(fs::File::open(&pkg).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+            let mut member = zip.by_name(f.member).map_err(|e| format!("{} not in {}: {e}", f.member, f.package))?;
+            let mut v = Vec::new();
+            member.read_to_end(&mut v).map_err(|e| e.to_string())?;
+            v
+        };
+        let _ = fs::remove_file(&pkg);
+        let got = format!("{:x}", Sha256::digest(&bytes));
+        if got != f.sha256 {
+            return Err(format!("{} from {} {} has an unexpected hash ({got})", f.file, f.package, f.version).into());
+        }
+        fs::write(&dest, bytes).map_err(|e| e.to_string())?;
+    }
+
+    for m in &models {
+        let name = m["name"].as_str().ok_or_else(|| "bad model manifest".to_string())?;
+        let (bytes, want) = (m["bytes"].as_u64().unwrap_or(0), m["sha256"].as_str().unwrap_or_default());
+        let dest = p.onnx_dir().join(name);
+        if fs::metadata(&dest).is_ok_and(|md| md.len() == bytes) && sha256_file(&dest).as_deref() == Some(want) {
+            tick(bytes, "Downloading models");
+            continue;
+        }
+        log(&format!("Downloading {name} ({:.0} MB)...", bytes as f64 / 1e6));
+        let part = p.onnx_dir().join(format!("{name}.part"));
+        let got = fetch(&format!("{base}/{name}"), &part, &mut |n| tick(n, "Downloading models"))?;
+        if got != want {
+            let _ = fs::remove_file(&part);
+            return Err(format!("{name} failed its integrity check (sha256 {got}, expected {want})").into());
+        }
+        fs::rename(&part, &dest).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Load the native engine and time its PLONK sampler (DirectML, else CPU).
+/// Returns (samples/s, accelerator used). Any failure here means the engine
+/// can't run on this machine.
+fn native_calibration(state: &AppState, log: &dyn Fn(&str)) -> Result<(f64, &'static str), NativeError> {
+    let p = &state.paths;
+    let unusable = |e: String| NativeError::Unavailable(format!("the native engine could not start ({e})"));
+    init_runtime(&p.ort_dir().join("onnxruntime.dll")).map_err(|e| {
+        unusable(format!("{e}. ONNX Runtime needs the Microsoft Visual C++ 2015-2022 Redistributable (x64)"))
+    })?;
+    // Calibrated on the default model; YFCC is the same size, iNaturalist is smaller.
+    let v = plonk::variant("osv5m").expect("osv5m");
+    let (step, accel) = match PlonkStep::load(&p.onnx_dir(), v, Accel::DirectMl) {
+        Ok(s) => (s, "DirectML"),
+        Err(e) => {
+            log(&format!("DirectML unavailable ({e}); using the CPU"));
+            (PlonkStep::load(&p.onnx_dir(), v, Accel::Cpu).map_err(|e| unusable(e.to_string()))?, "CPU")
+        }
+    };
+    let sps = step.throughput().map_err(|e| unusable(e.to_string()))?;
+    Ok((sps, accel))
+}
+
+fn setup_native(app: &AppHandle) -> Result<(), NativeError> {
+    let state = app.state::<AppState>();
+    let p = &state.paths;
+    let send = |v: Value| { let _ = app.emit("env-progress", v); };
+    let log = |m: &str| send(json!({ "event": "log", "message": m.trim() }));
+    // Downloads fill the bar to 92%; calibration takes the rest.
+    let progress = |done: u64, total: u64, status: &str| {
+        let pct = 1.0 + done as f64 / total.max(1) as f64 * 91.0;
+        send(json!({ "event": "progress", "pct": pct, "status": status, "done": done, "total": total }))
+    };
+
+    send(json!({ "event": "stage_start", "stage": "native_env" }));
+    install_native(&state, &progress, &log)?;
+    send(json!({ "event": "stage_done", "stage": "native_env" }));
+
+    send(json!({ "event": "stage_start", "stage": "calibrate" }));
+    send(json!({ "event": "progress", "pct": 94.0, "status": "Measuring sampling speed" }));
+    let (sps, accel) = native_calibration(&state, &log)?;
+    let recommended = samples_from_throughput(sps);
+    // hasGpu / gpuName describe an NVIDIA card (nvidia-smi); `accel` is what
+    // the native engine actually runs on (DirectML covers any DX12 GPU).
+    let mut hardware = query_gpu().as_object().cloned().unwrap_or_default();
+    hardware.insert("accel".into(), json!(accel));
+    hardware.insert("samplesPerSec".into(), json!(sps));
+    hardware.insert("recommendedSamples".into(), json!(recommended));
+    send(json!({ "event": "stage_done", "stage": "calibrate", "samples_per_sec": sps, "recommended_samples": recommended }));
+    merge_settings(p, Map::from_iter([("hardware".to_string(), Value::Object(hardware))]))?;
+    send(json!({ "event": "setup_complete" }));
+    Ok(())
+}
+
 fn samples_from_throughput(samples_per_sec: f64) -> u64 {
     if !(samples_per_sec > 0.0) {
         return 512;
@@ -412,7 +655,22 @@ fn run_calibration(app: &AppHandle) -> Result<f64, String> {
     }
 }
 
-fn setup_env(app: &AppHandle) -> Result<(), String> {
+/// First-run setup: the native engine when its files can be fetched, else the
+/// Python runtime. `native_only` (the Settings upgrade button) never falls back.
+fn setup_env(app: &AppHandle, native_only: bool) -> Result<(), String> {
+    match setup_native(app) {
+        Ok(()) => Ok(()),
+        Err(NativeError::Failed(e)) => Err(e),
+        Err(NativeError::Unavailable(e)) if native_only => Err(e),
+        Err(NativeError::Unavailable(e)) => {
+            let msg = format!("Native engine unavailable: {e}. Installing the Python runtime instead.");
+            let _ = app.emit("env-progress", json!({ "event": "log", "message": msg }));
+            setup_python(app)
+        }
+    }
+}
+
+fn setup_python(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     let p = &state.paths;
     let send = |v: Value| { let _ = app.emit("env-progress", v); };
@@ -462,9 +720,10 @@ fn setup_env(app: &AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn env_setup(app: AppHandle) -> Value {
+async fn env_setup(app: AppHandle, native_only: Option<bool>) -> Value {
     let handle = app.clone();
-    let result = tauri::async_runtime::spawn_blocking(move || setup_env(&handle))
+    let native_only = native_only.unwrap_or(false);
+    let result = tauri::async_runtime::spawn_blocking(move || setup_env(&handle, native_only))
         .await
         .unwrap_or_else(|e| Err(e.to_string()));
     match result {
@@ -476,13 +735,23 @@ async fn env_setup(app: AppHandle) -> Value {
     }
 }
 
+/// Delete every downloaded runtime and model (Python and native).
 #[tauri::command]
 fn env_purge(state: State<'_, AppState>) -> Value {
-    let runtime = state.paths.runtime();
-    match fs::remove_dir_all(&runtime) {
-        Ok(()) => json!({ "ok": true }),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => json!({ "ok": true }),
-        Err(e) => json!({ "ok": false, "error": e.to_string() }),
+    let p = &state.paths;
+    let mut errors = vec![];
+    for dir in [p.runtime(), p.onnx_dir(), p.ort_dir()] {
+        match fs::remove_dir_all(&dir) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            // onnxruntime.dll stays locked while it's loaded in this process.
+            Err(e) => errors.push(format!("{}: {e}", dir.display())),
+        }
+    }
+    if errors.is_empty() {
+        json!({ "ok": true })
+    } else {
+        json!({ "ok": false, "error": format!("{}. Restart Waypoint and purge again.", errors.join("; ")) })
     }
 }
 
@@ -559,13 +828,26 @@ fn run_pipeline(app: AppHandle, mode: Mode, args: RunArgs) -> Result<u32, String
     }
     // Always the image the user picked through the app, never a path from the page.
     let image = state.image.lock().unwrap().clone().ok_or("No image selected")?;
+    let settings = read_settings(&state.paths);
+    let model = settings.get("plonkModel").and_then(Value::as_str).and_then(plonk::variant).unwrap_or(&plonk::VARIANTS[0]);
+    // The native engine runs a model whose files are all installed, with no
+    // Python; otherwise the whole run goes through the Python model server.
+    let engine = native::locate(&state.paths.data);
+    let has_engine = engine.is_some();
+    let native_loc = engine.filter(|l| l.has(model.key));
     let python = state.paths.python_exe();
-    if !python.exists() {
-        return Err("Python runtime is not installed. Run first-time setup.".into());
+    if native_loc.is_none() && !python.exists() {
+        return Err(if has_engine {
+            format!("The {} model is not installed. Open Settings and install the native engine, or pick another model.", model.label)
+        } else {
+            "No inference engine is installed. Run first-time setup.".into()
+        });
     }
+    let needs_python = native_loc.is_none();
 
     let mut ra = CoreArgs::new(mode.clone(), image);
-    ra.mapillary_token = read_settings(&state.paths)
+    ra.model = model.key.into();
+    ra.mapillary_token = settings
         .get("mapillaryToken")
         .and_then(Value::as_str)
         .filter(|t| !t.is_empty())
@@ -591,38 +873,48 @@ fn run_pipeline(app: AppHandle, mode: Mode, args: RunArgs) -> Result<u32, String
 
     let script = state.paths.backend().join("model_server.py");
     let cwd = state.paths.backend();
-    let data_dir = state.paths.data.clone();
     thread::spawn(move || {
         let sink = TauriSink { app: app.clone() };
-        let log_app = app.clone();
-        let code = match PyModels::spawn(&python, &script, &cwd, move |s| {
-            let _ = log_app.emit("pipeline-event", json!({ "event": "log", "message": s }));
-        }) {
-            Ok(models) => {
-                let pid = models.pid();
-                *server_pid.lock().unwrap() = Some(pid);
-                app.state::<AppState>().track(pid);
-                // Retrieval networks run in-process (ONNX Runtime) when installed;
-                // otherwise everything goes through the Python model server.
-                let native = waypoint_core::native::locate(&data_dir).and_then(|loc| {
-                    waypoint_core::native::open(&loc, models.clone(), &|s| sink.log(s))
-                        .map_err(|e| sink.log(&format!("native models unavailable ({e}); using the Python model server")))
-                        .ok()
-                });
-                let code = match &native {
-                    Some(n) => core_run(&ra, n, &sink, &cancel),
-                    None => core_run(&ra, &*models, &sink, &cancel),
-                };
-                drop(native);
-                models.shutdown();
-                app.state::<AppState>().untrack(pid);
-                code
+        let spawn_py = || {
+            let log_app = app.clone();
+            match PyModels::spawn(&python, &script, &cwd, move |s| {
+                let _ = log_app.emit("pipeline-event", json!({ "event": "log", "message": s }));
+            }) {
+                Ok(m) => {
+                    let pid = m.pid();
+                    *server_pid.lock().unwrap() = Some(pid);
+                    app.state::<AppState>().track(pid);
+                    Some(m)
+                }
+                Err(e) => {
+                    sink.log(&format!("could not start the Python engine: {e}"));
+                    None
+                }
             }
-            Err(e) => {
-                sink.event(json!({ "event": "error", "message": e.to_string() }));
+        };
+        let mut py = if needs_python { spawn_py() } else { None };
+        let native = native_loc.and_then(|loc| {
+            native::open(&loc, model.key, &|s| sink.log(s)).map_err(|e| sink.log(&format!("native engine failed to load: {e}"))).ok()
+        });
+        // A native engine that won't load falls back to an installed Python engine.
+        if native.is_none() && py.is_none() && python.exists() {
+            sink.log("falling back to the Python engine");
+            py = spawn_py();
+        }
+        let code = match (&native, &py) {
+            (Some(n), _) => core_run(&ra, n, &sink, &cancel),
+            (None, Some(m)) => core_run(&ra, &**m, &sink, &cancel),
+            (None, None) => {
+                sink.event(json!({ "event": "error", "message": "No inference engine could be started. See the log." }));
                 1
             }
         };
+        drop(native);
+        if let Some(m) = py {
+            let pid = m.pid();
+            m.shutdown();
+            app.state::<AppState>().untrack(pid);
+        }
         *app.state::<AppState>().active_run.lock().unwrap() = None;
         let _ = app.emit("pipeline-event", json!({ "event": "exit", "code": code }));
     });

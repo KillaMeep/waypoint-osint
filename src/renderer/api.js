@@ -15,7 +15,8 @@
     setSettings: (settings) => invoke('settings_set', { settings }),
 
     getEnvStatus: () => invoke('env_status'),
-    runEnvSetup: () => invoke('env_setup'),
+    // { nativeOnly: true } installs only the native engine (no Python fallback).
+    runEnvSetup: (opts) => invoke('env_setup', { nativeOnly: !!(opts && opts.nativeOnly) }),
     purgeEnv: () => invoke('env_purge'),
     onEnvProgress: (cb) => listen('env-progress', (e) => cb(e.payload)),
 

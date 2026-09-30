@@ -14,6 +14,7 @@ pub mod native;
 pub mod net;
 pub mod onnx;
 pub mod pipeline;
+pub mod plonk;
 pub mod prep;
 pub mod pyserver;
 pub mod ransac;

@@ -431,10 +431,53 @@ h1, h2, h3 { margin: 0; font-family: var(--font-display); letter-spacing: -.01em
   background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow-lg);
   display: flex; flex-direction: column; gap: 16px;
 }
-.setup-mark { width: 44px; height: 44px; color: var(--text); }
 .setup-card h1 { font-size: 24px; }
 .setup-card p { margin: -6px 0 0; }
-.setup-status-row { display: flex; justify-content: space-between; gap: 12px; font-weight: 600; margin-bottom: 8px; }
+.setup-body { display: grid; grid-template-columns: auto 1fr; gap: 24px; align-items: center; padding: 8px 0 4px; }
+@media (max-width: 480px) { .setup-body { grid-template-columns: 1fr; justify-items: center; } }
+
+/* Progress dial: ring (stroke-dashoffset), mark + percentage in the middle. */
+.dial { position: relative; width: 156px; height: 156px; flex: none; }
+.dial-ring { width: 100%; height: 100%; transform: rotate(-90deg); }
+.dial-track { fill: none; stroke: var(--line); stroke-width: 7; }
+.dial-fill {
+  fill: none; stroke: var(--accent); stroke-width: 7; stroke-linecap: round;
+  stroke-dasharray: 326.73; stroke-dashoffset: 326.73;
+  transition: stroke-dashoffset .45s ease, stroke .3s ease;
+  filter: drop-shadow(0 0 6px var(--accent-line));
+}
+.dial-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+.dial-mark { width: 44px; height: 44px; color: var(--text); }
+.dial-done { display: none; width: 44px; height: 44px; color: var(--good); }
+.dial-pct { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.dial[data-state="idle"] .dial-pct { color: var(--faint); }
+.dial[data-state="running"] .dial-mark { animation: dial-breathe 2.4s ease-in-out infinite; }
+.dial[data-state="done"] .dial-fill { stroke: var(--good); filter: drop-shadow(0 0 6px var(--good-soft)); }
+.dial[data-state="done"] .dial-mark { display: none; }
+.dial[data-state="done"] .dial-done { display: block; animation: rise .3s ease; }
+.dial[data-state="done"] .dial-pct { color: var(--good); }
+.dial[data-state="error"] .dial-fill { stroke: var(--bad); filter: none; }
+.dial[data-state="error"] .dial-pct { color: var(--bad); }
+@keyframes dial-breathe { 50% { transform: scale(.92); opacity: .8; } }
+
+.setup-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.setup-status { font-size: 15px; font-weight: 650; }
+.setup-detail { font-size: 11.5px; color: var(--muted); min-height: 1.4em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.setup-steps { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+.setup-steps li { display: grid; grid-template-columns: 20px 1fr; gap: 10px; align-items: start; }
+.setup-steps .step-dot {
+  width: 18px; height: 18px; margin-top: 1px; border-radius: 50%; border: 2px solid var(--line-strong);
+  display: grid; place-items: center; box-sizing: border-box; transition: all .2s ease;
+}
+.setup-steps .step-dot .i { width: 12px; height: 12px; display: none; }
+.setup-steps .step-name { font-size: 13px; font-weight: 600; }
+.setup-steps .step-sub { font-size: 12px; color: var(--muted); }
+.setup-steps li[data-state="pending"] .step-name { color: var(--muted); }
+.setup-steps li[data-state="active"] .step-dot { border-color: var(--accent); border-top-color: transparent; animation: spin .8s linear infinite; }
+.setup-steps li[data-state="done"] .step-dot { background: var(--good); border-color: var(--good); color: #fff; }
+.setup-steps li[data-state="done"] .step-dot .i-check { display: block; }
+.setup-steps li[data-state="failed"] .step-dot { background: var(--bad); border-color: var(--bad); color: #fff; }
+.setup-steps li[data-state="failed"] .step-dot .i-x { display: block; }
 .bar { height: 6px; border-radius: 3px; background: var(--sunken); overflow: hidden; }
 .bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 3px; transition: width .3s ease; }
 .disclosure > summary { cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--muted); list-style: none; display: flex; align-items: center; gap: 6px; }
@@ -458,6 +501,19 @@ h1, h2, h3 { margin: 0; font-family: var(--font-display); letter-spacing: -.01em
 .dialog-section p { margin: 0; font-size: 13px; }
 .dialog-section.danger h3 { color: var(--bad); }
 .row { display: flex; align-items: center; gap: 12px; }
+.model-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-sm); overflow: hidden; }
+.model-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding: 9px 12px; cursor: pointer; }
+.model-row + .model-row { border-top: 1px solid var(--line); }
+.model-row:has(input:checked) { background: var(--accent-soft); }
+.model-row.is-off { cursor: default; }
+.model-row.is-off .model-text { opacity: .6; }
+.model-row input { accent-color: var(--accent); margin: 0; }
+.model-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.model-text b { font-size: 13px; }
+.model-text .note { font-size: 12px; }
+.model-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; }
+.model-side .note { font-size: 12px; white-space: nowrap; }
+
 .note { font-size: 12.5px; color: var(--muted); }
 
 /* ---------- Lightbox / drop / toast ---------- */

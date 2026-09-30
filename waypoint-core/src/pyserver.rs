@@ -143,15 +143,6 @@ impl Drop for PyModels {
     }
 }
 
-impl crate::native::Sampler for PyModels {
-    fn load(&self, model: &str) -> Result<()> {
-        Models::load(self, model)
-    }
-    fn sample(&self, path: &Path, batch: usize, seed: Option<u64>) -> Result<Vec<[f32; 2]>> {
-        Models::sample(self, path, batch, seed)
-    }
-}
-
 impl Models for PyModels {
     fn load(&self, model: &str) -> Result<()> {
         self.request(json!({ "op": "load", "model": model })).map(|_| ())

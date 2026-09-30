@@ -10,6 +10,9 @@ pub const CLIP_SIZE: u32 = 336;
 const CLIP_MEAN: [f32; 3] = [0.48145466, 0.4578275, 0.40821073];
 const CLIP_STD: [f32; 3] = [0.26862954, 0.26130258, 0.27577711];
 pub const DISK_MAX_SIDE: u32 = 1024;
+pub const DINOV2_SIZE: u32 = 336;
+const IMAGENET_MEAN: [f32; 3] = [0.485, 0.456, 0.406];
+const IMAGENET_STD: [f32; 3] = [0.229, 0.224, 0.225];
 
 /// Pillow's `Image.resize` for RGB8 (Resample.c): separable convolution with
 /// a scaled filter support, 22-bit fixed-point coefficients, horizontal pass
@@ -120,6 +123,27 @@ pub fn clip_pixel_values(img: &RgbImage) -> Result<Vec<f32>> {
             for c in 0..3 {
                 out[c * s * s + y * s + x] = (raw[i + c] as f32 / 255.0 - CLIP_MEAN[c]) / CLIP_STD[c];
             }
+        }
+    }
+    Ok(out)
+}
+
+/// plonk.pipe.DinoV2FeatureExtractor's augmentation: the largest centred
+/// square (plonk CenterCrop(ratio="1:1"), torchvision's centre-crop offsets),
+/// Pillow bicubic resize to 336x336, scale to [0,1], ImageNet mean/std. CHW f32.
+pub fn dinov2_pixel_values(img: &RgbImage) -> Result<Vec<f32>> {
+    let (w, h) = (img.width(), img.height());
+    let side = w.min(h);
+    // torchvision center_crop: int(round((dim - crop) / 2.0)), Python's half-even round
+    let top = (((h - side) as f64) / 2.0).round_ties_even() as u32;
+    let left = (((w - side) as f64) / 2.0).round_ties_even() as u32;
+    let square = image::imageops::crop_imm(img, left, top, side, side).to_image();
+    let resized = resize_rgb(&square, DINOV2_SIZE, DINOV2_SIZE, true)?;
+    let s = DINOV2_SIZE as usize;
+    let mut out = vec![0f32; 3 * s * s];
+    for (i, px) in resized.as_raw().chunks_exact(3).enumerate() {
+        for c in 0..3 {
+            out[c * s * s + i] = (px[c] as f32 / 255.0 - IMAGENET_MEAN[c]) / IMAGENET_STD[c];
         }
     }
     Ok(out)

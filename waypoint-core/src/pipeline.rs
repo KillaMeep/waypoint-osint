@@ -161,9 +161,17 @@ impl<'a> Run<'a> {
 
         emit(self.sink, "stage_start", json!({ "stage": "plonk_sampling" }));
         let mut coords: Vec<[f32; 2]> = vec![];
-        for _ in 0..a.num_runs {
+        for run in 0..a.num_runs {
             self.cancel.check()?;
-            coords.extend(self.models.sample(&a.image_path, a.num_samples, None)?);
+            let mut progress = |done: usize, total: usize| {
+                // Every 5th step is plenty for the progress bar.
+                if done % 5 == 0 || done == total {
+                    let all = total * a.num_runs;
+                    emit(self.sink, "progress", json!({ "stage": "plonk_sampling", "phase": "sampling", "completed": run * total + done, "total": all }));
+                }
+                !self.cancel.is_cancelled()
+            };
+            coords.extend(self.models.sample_progress(&a.image_path, a.num_samples, None, &mut progress)?);
         }
         let total_samples = a.num_samples * a.num_runs;
         let (clusters, noise_frac) = geo::cluster_samples(&coords, a.cluster_radius_km, 0.03, a.top_k);

@@ -1,7 +1,8 @@
 //! In-process inference through ONNX Runtime (the `ort` crate, loading the
 //! runtime DLL from disk at start-up):
 //!
-//! * StreetCLIP vision tower: the retrieval embedding.
+//! * Image encoders (StreetCLIP vision tower, DINOv2): the PLONK conditioning
+//!   and retrieval embedding.
 //! * DISK: the UNet runs in ONNX; keypoint selection (5x5 NMS, top-n) and
 //!   descriptor sampling are done here, mirroring kornia.
 //! * LightGlue: exported as separate graphs; the adaptive loop (early stop and
@@ -52,15 +53,33 @@ static INIT_ERR: Mutex<Option<String>> = Mutex::new(None);
 
 /// Load the ONNX Runtime library. Must happen before any session is created.
 pub fn init_runtime(dll: &Path) -> Result<()> {
-    INIT.call_once(|| match ort::init_from(dll) {
-        Ok(b) => {
-            b.commit();
+    INIT.call_once(|| {
+        // Load the DirectML.dll shipped next to onnxruntime.dll first. Once a
+        // module with that name is in the process, onnxruntime's own load of
+        // "DirectML.dll" resolves to it rather than to the System32 copy,
+        // which is too old for this runtime on some Windows 10 builds.
+        #[cfg(windows)]
+        if let Some(dml) = dll.parent().map(|d| d.join("DirectML.dll")).filter(|p| p.is_file()) {
+            // SAFETY: DirectML.dll has no initialisation side effects beyond
+            // what DllMain does on load; it stays loaded for the process lifetime.
+            if let Ok(lib) = unsafe { libloading::Library::new(&dml) } {
+                std::mem::forget(lib);
+            }
         }
-        Err(err) => *INIT_ERR.lock().unwrap() = Some(format!("could not load {}: {err}", dll.display())),
+        init_ort(dll)
     });
     match INIT_ERR.lock().unwrap().clone() {
         Some(m) => Err(Error::Msg(m)),
         None => Ok(()),
+    }
+}
+
+fn init_ort(dll: &Path) {
+    match ort::init_from(dll) {
+        Ok(b) => {
+            b.commit();
+        }
+        Err(err) => *INIT_ERR.lock().unwrap() = Some(format!("could not load {}: {err}", dll.display())),
     }
 }
 
@@ -106,6 +125,31 @@ fn run_f32(session: &Mutex<Session>, inputs: Vec<(&str, Tensor<f32>)>, outputs: 
             Ok((shape.iter().copied().collect(), data.to_vec()))
         })
         .collect()
+}
+
+/// pixel_values [n, 3, 336, 336] -> emb [n, d]
+fn embed_336(session: &Mutex<Session>, pixels: Vec<f32>, n: usize) -> Result<Vec<Vec<f32>>> {
+    let t = Tensor::from_array(([n, 3usize, 336, 336], pixels)).map_err(e)?;
+    let out = run_f32(session, vec![("pixel_values", t)], &["emb"])?;
+    let (shape, data) = &out[0];
+    let dim = *shape.last().unwrap_or(&0) as usize;
+    Ok(data.chunks_exact(dim).map(|c| c.to_vec()).collect())
+}
+
+/// An image encoder graph on its own (DINOv2, for the YFCC and iNaturalist
+/// PLONK variants). Same interface as the StreetCLIP graph.
+pub struct Encoder {
+    session: Mutex<Session>,
+}
+
+impl Encoder {
+    pub fn load(path: &Path, accel: Accel) -> Result<Self> {
+        Ok(Encoder { session: Mutex::new(build_session(path, accel)?) })
+    }
+
+    pub fn embed_pixels(&self, pixels: Vec<f32>, n: usize) -> Result<Vec<Vec<f32>>> {
+        embed_336(&self.session, pixels, n)
+    }
 }
 
 pub struct Keypoints {
@@ -154,11 +198,7 @@ impl OnnxModels {
 
     /// StreetCLIP CLS embeddings for CLIP-preprocessed pixel batches (n x 3 x 336 x 336).
     pub fn embed_pixels(&self, pixels: Vec<f32>, n: usize) -> Result<Vec<Vec<f32>>> {
-        let t = Tensor::from_array(([n, 3usize, 336, 336], pixels)).map_err(e)?;
-        let out = run_f32(&self.clip, vec![("pixel_values", t)], &["emb"])?;
-        let (shape, data) = &out[0];
-        let dim = *shape.last().unwrap_or(&0) as usize;
-        Ok(data.chunks_exact(dim).map(|c| c.to_vec()).collect())
+        embed_336(&self.clip, pixels, n)
     }
 
     /// DISK keypoints + descriptors (`disk(img, n=2048, pad_if_not_divisible=True)`).

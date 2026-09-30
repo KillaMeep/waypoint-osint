@@ -36,13 +36,22 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            waypoint-core
+            src-tauri
+
+      # Deterministic suites only (committed fixtures). The model parity suites
+      # are #[ignore]d: they need the exported ONNX models and PyTorch references.
+      - name: Test waypoint-core
+        working-directory: waypoint-core
+        run: cargo test --release --locked
 
       - name: Install dependencies
         run: npm ci
 
       # The raw release exe is already portable: the frontend and the Python
-      # backend are embedded in it, and WebView2 ships with Windows 10/11.
+      # fallback scripts are embedded in it, WebView2 ships with Windows 10/11,
+      # and the native engine + models download on first launch.
       - name: Build portable exe
         run: npm run dist
 
@@ -75,7 +84,7 @@ jobs:
 
           gh release create "$tag" "dist/Waypoint.exe" \
             --title "Waypoint (build-${{ steps.vars.outputs.sha_short }})" \
-            --notes "Automated portable build from commit ${{ github.sha }}."
+            --notes "Automated portable build from commit ${{ github.sha }}. Run Waypoint.exe; first launch downloads the inference engine and models (about 3 GB) from https://huggingface.co/killameep/waypoint-models."
 
       - name: Prune old releases (keep latest 2)
         shell: bash

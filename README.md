@@ -9,8 +9,8 @@
 ![License](https://img.shields.io/badge/license-MIT-2f6feb)
 ![Platform](https://img.shields.io/badge/platform-Windows%20x64-0078D6)
 ![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri&logoColor=white)
-![Rust](https://img.shields.io/badge/Rust-stable-B7410E?logo=rust&logoColor=white)
-![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
+![Rust](https://img.shields.io/badge/Rust-1.90%2B-B7410E?logo=rust&logoColor=white)
+![ONNX Runtime](https://img.shields.io/badge/ONNX%20Runtime-DirectML-005CED?logo=onnx&logoColor=white)
 
 </div>
 
@@ -36,10 +36,10 @@ locally. Only the imagery lookups in the refinement stages send data from your m
   <img src="assets/pipeline-light.svg" alt="Pipeline: photo, PLONK coarse locate, sun and season plausibility, retrieval refinement, geometric verification, ranked candidates on the map">
 </picture>
 
-1. **Coarse localization.** [PLONK](https://github.com/nicolas-dufour/plonk), a diffusion model, samples a spread of plausible locations. It clusters the locations into weighted candidates.
+1. **Coarse localization.** [PLONK](https://github.com/nicolas-dufour/plonk), a generative model, samples a spread of plausible locations. Waypoint clusters the locations into weighted candidates.
 2. **Sun / season plausibility.** Waypoint checks shadow direction and lighting against the sun's position for the implied place, date, and time. Guesses that do not match lose rank.
 3. **Retrieval refinement.** Waypoint compares each candidate against nearby real photos from **Mapillary**, **Google Street View**, and **Panoramax**.
-4. **Geometric verification.** Waypoint confirms promising matches with local-feature matching (**DISK + LightGlue**, via `kornia`). The inlier count shows how strong a match is.
+4. **Geometric verification.** Waypoint confirms promising matches with local-feature matching (**DISK + LightGlue**). The inlier count shows how strong a match is.
 5. **Refine.** Pick any candidate or match. Waypoint then runs an exhaustive search of a small radius around it.
 
 ## Features
@@ -51,18 +51,26 @@ locally. Only the imagery lookups in the refinement stages send data from your m
 - **Drop a photo anywhere** on the window. The photo stays in view, with a full-size viewer for side-by-side comparison.
 - **Light and dark theme**, a Stop button for long runs, and a log drawer when you want the raw events.
 - **No paid APIs.** Google Street View, Panoramax, and OpenStreetMap need no keys. Mapillary is optional and free.
-- **Zero manual setup.** The app downloads its own portable Python runtime on first launch. No system Python required.
+- **Three PLONK models.** OSV-5M for street scenes, YFCC for general photos, iNaturalist for nature shots. Switch in Settings.
+- **Zero manual setup.** The app downloads its own inference engine and models on first launch. No Python required.
+- **Any GPU, or none.** Inference runs through DirectML on NVIDIA, AMD and Intel GPUs, with a CPU fallback.
 
-## Requirements
+## Download
 
-- **Windows 10 / 11 (x64).** _(Waypoint does not yet support macOS or Linux. First-run setup fetches a Windows Python build.)_
-- **[Node.js](https://nodejs.org/) 18+** and npm, to install and run from source.
-- **[Rust](https://rustup.rs/) (stable)** and the **Visual Studio C++ Build Tools**, to compile the Tauri shell. See the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
-- **WebView2.** Windows 10 and 11 already include it.
-- **~6–8 GB free disk** (PyTorch and model weights) and an **internet connection** for first-run setup, imagery lookups, and the model download.
-- **Optional: an NVIDIA GPU** (CUDA), auto-detected for faster inference. Otherwise it runs on CPU.
+Get `Waypoint.exe` from the [latest release](https://github.com/KillaMeep/waypoint-osint/releases/latest)
+and run it. It is a single portable exe: no installer, nothing to unpack.
 
-## Install & run
+You need:
+
+- **Windows 10 / 11 (x64).** _(Waypoint does not yet support macOS or Linux.)_ WebView2 ships with both.
+- **Microsoft Visual C++ 2015–2022 Redistributable (x64)**, which ONNX Runtime needs. Most machines already have it; if setup reports that the native engine could not start, [install it](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist).
+- **~3 GB free disk** for the engine and models, and an **internet connection** for first-run setup and the imagery lookups. (The Python fallback needs about 8 GB.)
+- **Optional: a DirectX 12 GPU** (NVIDIA, AMD or Intel) for faster inference, used through DirectML. Otherwise it runs on the CPU.
+
+## Run from source
+
+Also needs **[Node.js](https://nodejs.org/) 18+**, **[Rust](https://rustup.rs/) 1.90+** and the
+**Visual Studio C++ Build Tools** (see the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)).
 
 ```bash
 git clone https://github.com/KillaMeep/waypoint-osint.git
@@ -73,11 +81,37 @@ npm start
 
 ### First launch (automatic, one-time)
 
-On the very first run, Waypoint installs a **portable Python environment** for itself. It downloads
-[`uv`](https://github.com/astral-sh/uv), a managed Python 3.11 interpreter, and the pipeline
-dependencies (PyTorch and the rest). This takes a few minutes. Waypoint shows a progress bar during
-setup. Everything lands in the app's own data folder. Waypoint never touches your system Python, if
-you have one. You can wipe and redo this anytime from **Settings → Purge Python install**.
+On the very first run, Waypoint downloads its **native engine**:
+
+- [ONNX Runtime](https://onnxruntime.ai/) and DirectML, from their official NuGet packages.
+- The exported models (about 2.8 GB) from [the model host](https://huggingface.co/killameep/waypoint-models):
+  all three PLONK models, StreetCLIP, DINOv2, DISK and LightGlue.
+
+Waypoint checks every file against a pinned SHA-256 hash before it uses the file. Then it measures
+how fast your machine samples, to pick a default for **Samples**. Everything lands in the app's own
+data folder (`%APPDATA%\geolocator-gui`).
+
+If Waypoint cannot reach the model host, it installs a **portable Python runtime** instead: a
+managed Python 3.11 from [`uv`](https://github.com/astral-sh/uv) with PyTorch. That takes a few
+minutes and about 8 GB. Waypoint never touches your system Python, if you have one.
+
+An install from an older version keeps working on Python. To switch, open **Settings → Install the
+native engine**. To wipe everything and set up again, use **Settings → Delete downloads**.
+
+### Choosing a model
+
+**Settings → Model** picks the PLONK model that predicts the location:
+
+| Model | Trained on | Image encoder |
+|-------|------------|---------------|
+| OSV-5M (default) | Street-level photos | StreetCLIP |
+| YFCC | General Flickr photos: landmarks, landscapes, indoor and tourist shots | DINOv2 |
+| iNaturalist | Nature photos: plants, animals, wild outdoor scenes | DINOv2 |
+
+Setup installs all three. The retrieval stages rank street-level imagery with the chosen model's
+encoder, as the Python pipeline does. On a Python install, every model runs on the Python engine,
+which downloads its own weights on first use. An older native install with only OSV-5M offers
+**Settings → Install the native engine**, which fetches just the missing files.
 
 ### Optional: Mapillary token
 
@@ -96,20 +130,61 @@ OpenStreetMap work with no keys at all.
 npm run dist
 ```
 
-Produces a standalone portable exe at `src-tauri/target/release/waypoint.exe` (about 8 MB). The
-frontend and the Python backend scripts are embedded in it. The backend unpacks next to the Python
-runtime on launch.
+Produces a standalone portable exe at `src-tauri/target/release/waypoint.exe`. The frontend and the
+Python fallback scripts are embedded in it. The engine and models download on first launch.
+
+Every push to `main` builds this exe in GitHub Actions (after the Rust test suite passes) and
+publishes it as a release. The workflow keeps the two newest builds.
+
+### Publishing the models
+
+The app downloads the ONNX models from `MODEL_BASE_URL` in `src-tauri/src/lib.rs`, and checks them
+against `src-tauri/models.json`. To produce and publish them:
+
+1. Export the models with a Python environment that has `torch`, `diff-plonk`, `kornia`,
+   `transformers`, `onnx` and `onnxruntime`:
+   `tools/export/export_clip.py`, `tools/export/export_disk_lightglue.py`, `tools/export/export_dinov2.py`,
+   and `tools/export/export_plonk.py` once per model (`osv5m`, `yfcc`, `inat`). Each takes the output
+   folder first.
+2. Run `python tools/export/make_manifest.py <folder>` to rewrite `src-tauri/models.json`.
+3. Upload every `.onnx` file to the host. Check each model's license before you redistribute it.
+
+For testing, set `WAYPOINT_MODEL_URL` to another host (a local HTTP server works), and
+`WAYPOINT_DATA_DIR` to a scratch folder.
+
+### Parity with the Python pipeline
+
+`tools/parity/` records reference outputs from the original PyTorch pipeline. The ignored tests in
+`waypoint-core/tests/` compare the Rust port against them. See
+[`tools/parity/REPORT.md`](tools/parity/REPORT.md) for the numbers.
+
+## Performance
+
+Measured on a Ryzen 7 9800X3D with an RTX 5080 (details in [`tools/parity/REPORT.md`](tools/parity/REPORT.md)):
+
+| | Native engine | Python engine |
+|---|---|---|
+| Install size (all three models) | ~2.6 GB | ~9.8 GB |
+| PLONK sampling, GPU (OSV-5M) | 1299 samples/s (DirectML) | 1235 samples/s (CUDA) |
+| PLONK sampling, CPU (OSV-5M) | ~70 samples/s | 27–33 samples/s |
+| Non-NVIDIA GPUs | Used, through DirectML | CPU only |
+
+With the same input, the native engine reproduces PyTorch's samples to about a metre and gives
+the same clusters.
 
 ## Under the hood
 
 | Layer | Tech |
 |-------|------|
 | Desktop shell | Tauri 2 (Rust) + WebView2 |
-| Coarse geolocation | PLONK (`diff-plonk`) |
-| Sun/season check | `astral` (sun position vs. OpenStreetMap road bearings) |
+| Pipeline | `waypoint-core` (Rust): orchestration, clustering, sun math, RANSAC, imagery clients |
+| Inference | ONNX Runtime (DirectML, CPU fallback). Python + PyTorch as a fallback engine |
+| Coarse geolocation | PLONK (OSV-5M, YFCC or iNaturalist), its flow sampler reimplemented in Rust |
+| Image embedding | StreetCLIP (OSV-5M) · DINOv2 (YFCC, iNaturalist) |
+| Sun/season check | Port of `astral` (sun position vs. OpenStreetMap road bearings) |
 | Street-level imagery | Mapillary API · Google Street View · Panoramax |
-| Feature matching | DISK + LightGlue (`kornia`) |
-| Geocoding / roads | `geopy` (Nominatim) · OSM Overpass |
+| Feature matching | DISK + LightGlue, LightGlue's adaptive loop reimplemented in Rust |
+| Geocoding / roads | Nominatim · OSM Overpass |
 | Map UI | Leaflet + OpenStreetMap tiles |
 
 ## Ethical use
@@ -123,5 +198,5 @@ Estimates are probabilistic, not proof. Always corroborate before acting on a re
 [MIT](LICENSE). Free to use, modify, and distribute.
 
 <div align="center">
-<sub>Built on the shoulders of PLONK, Leaflet, OpenStreetMap, Mapillary, Panoramax, and kornia.</sub>
+<sub>Built on the shoulders of PLONK, StreetCLIP, DINOv2, DISK, LightGlue, ONNX Runtime, Tauri, Leaflet, OpenStreetMap, Mapillary, and Panoramax.</sub>
 </div>

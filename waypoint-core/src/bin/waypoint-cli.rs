@@ -3,8 +3,8 @@
 //! Logs go to stderr. Same flags as the old `run_pipeline.py`, plus:
 //!   --python <exe>       Python interpreter for the model server (env WAYPOINT_PYTHON)
 //!   --backend <dir>      folder containing model_server.py (default ./python_backend)
-//!   --engine auto|native|py   retrieval networks: ONNX Runtime when installed (auto), or force one
-//!   --seed N             (unused by the Python server path, reserved)
+//!   --engine auto|native|py   networks: ONNX Runtime when the --model's files are
+//!                        installed (auto), or force one. A native run needs no Python.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -63,53 +63,59 @@ fn main() {
             "--python" => python = Some(val().into()),
             "--engine" => engine = val(),
             "--backend" => backend = val().into(),
-            "--seed" => {
-                let _ = val();
-            }
             other => {
                 eprintln!("unknown argument {other}");
                 std::process::exit(2);
             }
         }
     }
-    let python = python.unwrap_or_else(|| {
-        PathBuf::from(std::env::var("APPDATA").unwrap_or_default()).join("geolocator-gui/python-runtime/venv/Scripts/python.exe")
-    });
     let sink = Stdout;
-    let models = match PyModels::spawn(&python, &backend.join("model_server.py"), &backend, |s| eprint!("{s}")) {
-        Ok(m) => m,
-        Err(e) => {
-            sink.event(serde_json::json!({ "event": "error", "message": e.to_string() }));
-            std::process::exit(1);
-        }
-    };
     let data_dir = std::env::var_os("WAYPOINT_DATA_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(std::env::var("APPDATA").unwrap_or_default()).join("geolocator-gui"));
-    let native = match engine.as_str() {
-        "py" => None,
-        _ => match waypoint_core::native::locate(&data_dir) {
-            Some(loc) => match waypoint_core::native::open(&loc, models.clone(), &|s| sink.log(s)) {
-                Ok(n) => Some(n),
-                Err(e) => {
-                    sink.log(&format!("native models unavailable ({e}); using the Python model server"));
-                    None
-                }
-            },
-            None => {
-                if engine == "native" {
-                    sink.event(serde_json::json!({ "event": "error", "message": "ONNX models / runtime not found" }));
-                    std::process::exit(1);
-                }
-                None
-            }
-        },
+    let loc = if engine == "py" { None } else { waypoint_core::native::locate(&data_dir) };
+    let loc = loc.filter(|l| l.has(&a.model));
+    if loc.is_none() && engine == "native" {
+        let msg = format!("ONNX runtime or the files of model '{}' not found", a.model);
+        sink.event(serde_json::json!({ "event": "error", "message": msg }));
+        std::process::exit(1);
+    }
+
+    // The server runs with the backend folder as its working directory, so a
+    // relative --backend must be resolved first or the script path doubles up.
+    let backend = std::path::absolute(&backend).unwrap_or(backend);
+
+    // The Python model server is only needed when the model is not installed
+    // as ONNX, or when the native engine fails to load.
+    let python = python.unwrap_or_else(|| {
+        PathBuf::from(std::env::var("APPDATA").unwrap_or_default()).join("geolocator-gui/python-runtime/venv/Scripts/python.exe")
+    });
+    let spawn_py = || match PyModels::spawn(&python, &backend.join("model_server.py"), &backend, |s| eprint!("{s}")) {
+        Ok(m) => Some(m),
+        Err(e) => {
+            sink.log(&format!("could not start the Python model server: {e}"));
+            None
+        }
     };
-    let code = match &native {
-        Some(n) => run(&a, n, &sink, &Cancel::new()),
-        None => run(&a, &*models, &sink, &Cancel::new()),
+    let native = loc.and_then(|loc| match waypoint_core::native::open(&loc, &a.model, &|s| sink.log(s)) {
+        Ok(n) => Some(n),
+        Err(e) => {
+            sink.log(&format!("native engine failed to load: {e}"));
+            None
+        }
+    });
+    let py = if native.is_none() && engine != "native" { spawn_py() } else { None };
+    let code = match (&native, &py) {
+        (Some(n), _) => run(&a, n, &sink, &Cancel::new()),
+        (None, Some(m)) => run(&a, &**m, &sink, &Cancel::new()),
+        (None, None) => {
+            sink.event(serde_json::json!({ "event": "error", "message": "no inference engine could be started" }));
+            1
+        }
     };
     drop(native);
-    models.shutdown();
+    if let Some(m) = py {
+        m.shutdown();
+    }
     std::process::exit(code);
 }

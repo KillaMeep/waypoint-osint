@@ -31,15 +31,29 @@
   <!-- ================= First-run setup ================= -->
   <section id="setupScreen" class="setup hidden">
     <div class="setup-card">
-      <svg class="setup-mark"><use href="#i-mark"/></svg>
       <h1>Set up Waypoint</h1>
-      <p class="muted">Waypoint installs a private Python runtime, PyTorch and the model dependencies inside its own data folder. This happens once and needs 6 to 8 GB of disk space.</p>
-      <div class="setup-progress">
-        <div class="setup-status-row"><span id="setupStatus">Ready to begin.</span><span id="setupPct" class="mono muted"></span></div>
-        <div class="bar"><i id="setupBar"></i></div>
+      <p class="muted">Waypoint downloads its inference engine and models (about 3 GB) into its own data folder. This happens once. If the models can't be reached, it installs a private Python runtime instead, which needs about 8 GB.</p>
+      <div class="setup-body">
+        <div id="setupDial" class="dial" data-state="idle" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <svg class="dial-ring" viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="dial-track" cx="60" cy="60" r="52" />
+            <circle id="setupRing" class="dial-fill" cx="60" cy="60" r="52" />
+          </svg>
+          <div class="dial-center">
+            <svg class="dial-mark"><use href="#i-mark"/></svg>
+            <svg class="dial-done"><use href="#i-check"/></svg>
+            <span id="setupPct" class="dial-pct">0%</span>
+          </div>
+        </div>
+        <div class="setup-side">
+          <div id="setupStatus" class="setup-status">Ready to begin</div>
+          <div id="setupDetail" class="setup-detail mono"></div>
+          <ol id="setupSteps" class="setup-steps"></ol>
+        </div>
       </div>
       <details class="disclosure"><summary>Installer output</summary><pre id="setupLog" class="log"></pre></details>
       <button id="setupStartBtn" class="btn btn-accent btn-block"><span class="btn-label">Start setup</span></button>
+      <button id="setupBackBtn" class="btn btn-quiet btn-block hidden">Back to Waypoint</button>
     </div>
   </section>
 
@@ -181,14 +195,23 @@
       </div>
     </section>
     <section class="dialog-section">
-      <h3>Hardware</h3>
+      <h3>Model</h3>
+      <p class="muted">The PLONK model that predicts where the photo was taken. It also ranks the street-level imagery.</p>
+      <div id="modelList" class="model-list" role="radiogroup" aria-label="Model"></div>
+    </section>
+    <section class="dialog-section">
+      <h3>Engine</h3>
+      <p id="engineInfo" class="muted"></p>
       <p id="hardwareInfo" class="muted">Unknown until setup runs.</p>
+      <div id="nativeUpgrade" class="row hidden">
+        <button id="nativeInstallBtn" class="btn btn-quiet btn-sm">Install the native engine (3 GB)</button>
+      </div>
     </section>
     <section class="dialog-section danger">
-      <h3>Python environment</h3>
-      <p class="muted">Delete the downloaded runtime and every installed package (uv, the interpreter, PyTorch). Use this only if setup broke. Waypoint runs first-time setup again on the next launch.</p>
+      <h3>Downloaded files</h3>
+      <p class="muted">Delete the downloaded engines and models: the native runtime and models, and the Python runtime with PyTorch. Use this only if setup broke. Waypoint runs first-time setup again on the next launch.</p>
       <div class="row">
-        <button id="purgeEnvBtn" class="btn btn-danger btn-sm">Purge Python install</button>
+        <button id="purgeEnvBtn" class="btn btn-danger btn-sm">Delete downloads</button>
         <span id="purgeStatus" class="note"></span>
       </div>
     </section>
