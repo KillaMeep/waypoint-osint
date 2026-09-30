@@ -1,5 +1,5 @@
 //! The neural pieces behind a small trait, so the orchestrator does not care
-//! whether they run in the Python model server or in-process (ONNX).
+//! how they run (in-process on ONNX Runtime, see `native`).
 
 use std::path::Path;
 

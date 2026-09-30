@@ -1,10 +1,10 @@
-//! Waypoint backend: everything except the neural networks lives here.
+//! Waypoint backend: the pipeline, its algorithms, and in-process inference (ONNX Runtime).
 //!
 //! * [`pipeline`] orchestrates a run and emits the NDJSON event contract.
 //! * [`sources`] are the imagery clients (Mapillary, Google Street View, Panoramax).
 //! * [`geo`], [`sun`], [`astral`], [`ransac`] are the deterministic algorithms.
-//! * [`models`] is the interface to the neural pieces; [`pyserver`] implements it
-//!   over the Python model server.
+//! * [`models`] is the interface to the neural pieces; [`native`] implements it
+//!   on ONNX Runtime.
 
 pub mod astral;
 pub mod geo;
@@ -16,7 +16,6 @@ pub mod onnx;
 pub mod pipeline;
 pub mod plonk;
 pub mod prep;
-pub mod pyserver;
 pub mod ransac;
 pub mod retrieval;
 pub mod sources;

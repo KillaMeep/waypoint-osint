@@ -1,9 +1,8 @@
 //! `Models` implementation that runs every network in-process through ONNX
 //! Runtime: DISK, LightGlue, and a PLONK variant's step graph plus its image
 //! encoder (StreetCLIP or DINOv2), which also provides the retrieval
-//! embedding. A variant runs here only when all of its files are installed;
-//! otherwise callers run the whole pipeline on the Python model server, so the
-//! embedding used for retrieval always matches the one PLONK was trained on.
+//! embedding, so retrieval always ranks with the encoder PLONK was trained on.
+//! A variant runs only when all of its files are installed.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};

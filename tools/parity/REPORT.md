@@ -122,6 +122,9 @@ uninstalled model selected stops with an error that names the model.
 
 ## End to end (in the app, native engine, no Python present)
 
+_The Python fallback engine described below was later removed; Waypoint now runs on ONNX Runtime
+only, and the original pipeline lives in `tools/parity/reference_pipeline/`._
+
 - Setup from an empty data folder: runtime from NuGet plus 1.41 GB of models, every file
   SHA-256-checked, then calibration. 33 s with the models on a local mirror.
 - `DirectML.dll` loads from the app's own `ort` folder (1.15.4), not from System32.

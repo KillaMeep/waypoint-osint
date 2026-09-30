@@ -54,23 +54,33 @@ static INIT_ERR: Mutex<Option<String>> = Mutex::new(None);
 /// Load the ONNX Runtime library. Must happen before any session is created.
 pub fn init_runtime(dll: &Path) -> Result<()> {
     INIT.call_once(|| {
-        // Load the DirectML.dll shipped next to onnxruntime.dll first. Once a
-        // module with that name is in the process, onnxruntime's own load of
-        // "DirectML.dll" resolves to it rather than to the System32 copy,
-        // which is too old for this runtime on some Windows 10 builds.
         #[cfg(windows)]
-        if let Some(dml) = dll.parent().map(|d| d.join("DirectML.dll")).filter(|p| p.is_file()) {
-            // SAFETY: DirectML.dll has no initialisation side effects beyond
-            // what DllMain does on load; it stays loaded for the process lifetime.
-            if let Ok(lib) = unsafe { libloading::Library::new(&dml) } {
-                std::mem::forget(lib);
-            }
-        }
+        preload_windows(dll);
         init_ort(dll)
     });
     match INIT_ERR.lock().unwrap().clone() {
         Some(m) => Err(Error::Msg(m)),
         None => Ok(()),
+    }
+}
+
+/// Load DirectML.dll and onnxruntime.dll ourselves, resolving their
+/// dependencies only from their own folder and System32. A default load also
+/// searches the exe's folder first, so an old Visual C++ runtime sitting next
+/// to Waypoint.exe (e.g. in Downloads) would be picked up and fail the load.
+/// Loading DirectML.dll from the runtime folder also keeps the older System32
+/// copy (too old on some Windows 10 builds) out. `ort::init_from` then finds
+/// both modules already loaded. They stay loaded for the process lifetime.
+#[cfg(windows)]
+fn preload_windows(dll: &Path) {
+    use libloading::os::windows::{Library, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR, LOAD_LIBRARY_SEARCH_SYSTEM32};
+    let flags = LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32;
+    let dml = dll.parent().map(|d| d.join("DirectML.dll")).filter(|p| p.is_file());
+    for path in dml.iter().map(|p| p.as_path()).chain([dll]) {
+        // SAFETY: plain DLL loads; neither library runs code on load beyond DllMain.
+        if let Ok(lib) = unsafe { Library::load_with_flags(path, flags) } {
+            std::mem::forget(lib);
+        }
     }
 }
 

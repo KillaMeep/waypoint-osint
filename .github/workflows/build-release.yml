@@ -49,24 +49,59 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # The raw release exe is already portable: the frontend and the Python
-      # fallback scripts are embedded in it, WebView2 ships with Windows 10/11,
-      # and the native engine + models download on first launch.
-      - name: Build portable exe
-        run: npm run dist
-
-      - name: Collect build output
-        shell: bash
-        run: |
-          mkdir -p dist
-          cp src-tauri/target/release/waypoint.exe dist/Waypoint.exe
-          ls -la dist
-          test -f "dist/Waypoint.exe" || { echo "::error::dist/Waypoint.exe not found"; exit 1; }
-
-      - name: Compute short SHA
+      # Every build gets a higher version (major.minor from tauri.conf.json,
+      # patch = run number), which is what the in-app updater compares.
+      - name: Set version
         id: vars
         shell: bash
-        run: echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          base=$(node -p "require('./src-tauri/tauri.conf.json').version.split('.').slice(0, 2).join('.')")
+          version="$base.${{ github.run_number }}"
+          node -e "
+            const fs = require('fs'), f = 'src-tauri/tauri.conf.json';
+            const c = JSON.parse(fs.readFileSync(f, 'utf8'));
+            c.version = '$version';
+            fs.writeFileSync(f, JSON.stringify(c, null, 2) + '\n');
+          "
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "Building Waypoint $version"
+
+      # NSIS installer (per-user, no admin) plus its updater signature. The key
+      # has no password; the public half is in tauri.conf.json.
+      - name: Build signed installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: npm run installer
+
+      - name: Collect build output and write latest.json
+        shell: bash
+        run: |
+          set -e
+          version="${{ steps.vars.outputs.version }}"
+          setup=$(ls src-tauri/target/release/bundle/nsis/*-setup.exe)
+          name="Waypoint_${version}_x64-setup.exe"
+          mkdir -p dist
+          cp "$setup" "dist/$name"
+          cp "$setup.sig" "dist/$name.sig"
+          # The updater manifest the app reads from releases/latest/download/latest.json.
+          node -e "
+            const fs = require('fs');
+            fs.writeFileSync('dist/latest.json', JSON.stringify({
+              version: '$version',
+              notes: 'Build ${{ steps.vars.outputs.sha_short }}: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}',
+              pub_date: new Date().toISOString(),
+              platforms: {
+                'windows-x86_64': {
+                  signature: fs.readFileSync('dist/$name.sig', 'utf8').trim(),
+                  url: '${{ github.server_url }}/${{ github.repository }}/releases/download/v$version/$name',
+                },
+              },
+            }, null, 2));
+          "
+          ls -la dist
+          cat dist/latest.json
 
       - name: Create release
         shell: bash
@@ -74,17 +109,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          tag="build-${{ steps.vars.outputs.sha_short }}"
-
-          # A re-run on the same commit would collide on an existing tag; replace it.
+          version="${{ steps.vars.outputs.version }}"
+          tag="v$version"
+          # A re-run of the same run number would collide on the tag; replace it.
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "Release $tag already exists, replacing it"
             gh release delete "$tag" --yes --cleanup-tag
           fi
-
-          gh release create "$tag" "dist/Waypoint.exe" \
-            --title "Waypoint (build-${{ steps.vars.outputs.sha_short }})" \
-            --notes "Automated portable build from commit ${{ github.sha }}. Run Waypoint.exe; first launch downloads the inference engine and models (about 3 GB) from https://huggingface.co/killameep/waypoint-models."
+          gh release create "$tag" dist/*.exe dist/latest.json \
+            --title "Waypoint $version" \
+            --notes "Built from ${{ github.sha }}. Run **Waypoint_${version}_x64-setup.exe** to install (per-user, no admin). Installed copies update themselves from here. First launch downloads the inference engine and models (about 3 GB) from https://huggingface.co/killameep/waypoint-models."
 
       - name: Prune old releases (keep latest 2)
         shell: bash

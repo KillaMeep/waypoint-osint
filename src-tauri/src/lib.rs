@@ -4,44 +4,30 @@
 //! the inference engine, running the pipeline (`waypoint-core`), settings, and
 //! native dialogs.
 //!
-//! Two engines, picked per run:
-//! * native: ONNX Runtime (DirectML, CPU fallback) with the exported PLONK,
-//!   StreetCLIP, DISK and LightGlue models. No Python. First-run setup
-//!   downloads the runtime from NuGet and the models from MODEL_BASE_URL.
-//! * Python: the uv-managed runtime with PyTorch, serving the networks through
-//!   `python_backend/model_server.py`. Used when the native files are absent
-//!   (older installs, or when the model host can't be reached during setup).
-//!   The backend scripts are embedded and unpacked at launch.
+//! Inference runs in-process on ONNX Runtime (DirectML, CPU fallback) with the
+//! exported PLONK, StreetCLIP, DINOv2, DISK and LightGlue models. First-run
+//! setup downloads the runtime from NuGet and the models from MODEL_BASE_URL.
 
-use std::collections::HashSet;
 use std::fs;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::sync::{mpsc, Arc, Mutex};
-use std::thread::{self, JoinHandle};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::process::Command;
+use std::sync::Mutex;
+use std::thread;
 
 use base64::Engine;
-use include_dir::{include_dir, Dir};
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
-use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
+use tauri_plugin_updater::UpdaterExt;
 use sha2::{Digest, Sha256};
 use waypoint_core::native;
 use waypoint_core::onnx::{init_runtime, Accel};
 use waypoint_core::plonk::{self, PlonkStep};
-use waypoint_core::pyserver::PyModels;
 use waypoint_core::{run as core_run, Cancel, Mode, RunArgs as CoreArgs, Sink};
 
-static BACKEND: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../python_backend");
-
-// uv manages the interpreter itself, so no system Python is needed.
-const UV_VERSION: &str = "0.11.30";
-const PYTHON_VERSION: &str = "3.11";
-const CUDA_TORCH_INDEX: &str = "https://download.pytorch.org/whl/cu128";
 // Aim the default Samples value at ~10 s of sampling for one run.
 const CALIBRATION_TARGET_SECONDS: f64 = 10.0;
 const IMAGE_EXTS: [&str; 5] = ["jpg", "jpeg", "png", "bmp", "webp"];
@@ -82,7 +68,7 @@ const RUNTIME_FILES: [NugetFile; 2] = [
 ];
 
 // Folder name kept from the Electron build (its `userData` dir), so an
-// existing install keeps its multi-GB runtime and settings after the port.
+// existing install keeps its settings.
 const DATA_DIR_NAME: &str = "geolocator-gui";
 
 struct Paths {
@@ -90,39 +76,22 @@ struct Paths {
 }
 
 impl Paths {
-    fn runtime(&self) -> PathBuf { self.data.join("python-runtime") }
-    fn uv_dir(&self) -> PathBuf { self.runtime().join("uv") }
-    fn uv_exe(&self) -> PathBuf { self.uv_dir().join("uv.exe") }
-    fn uv_zip(&self) -> PathBuf { self.runtime().join("uv.zip") }
-    // Keeps the managed interpreter inside the app's data dir instead of the
-    // user's global uv cache.
-    fn uv_python_dir(&self) -> PathBuf { self.runtime().join("uv-python") }
-    fn venv(&self) -> PathBuf { self.runtime().join("venv") }
-    // WAYPOINT_PYTHON lets a developer point at another interpreter (read-only use).
-    fn python_exe(&self) -> PathBuf {
-        match std::env::var_os("WAYPOINT_PYTHON") {
-            Some(p) => PathBuf::from(p),
-            None => self.venv().join("Scripts").join("python.exe"),
-        }
-    }
-    fn deps_marker(&self) -> PathBuf { self.runtime().join(".deps_installed") }
     fn ort_dir(&self) -> PathBuf { self.data.join("ort") }
     fn onnx_dir(&self) -> PathBuf { self.data.join("onnx") }
     fn settings(&self) -> PathBuf { self.data.join("settings.json") }
-    fn backend(&self) -> PathBuf { self.data.join("backend") }
+    /// Left by versions that ran a Python engine; only "Delete downloads" touches them.
+    fn legacy_python(&self) -> [PathBuf; 2] { [self.data.join("python-runtime"), self.data.join("backend")] }
 }
 
 struct AppState {
     paths: Paths,
-    children: Mutex<HashSet<u32>>,
     active_run: Mutex<Option<ActiveRun>>,
     image: Mutex<Option<PathBuf>>,
 }
 
-/// The pipeline run in flight: its cancel flag, and the model server it talks to.
+/// The pipeline run in flight.
 struct ActiveRun {
     cancel: Cancel,
-    server_pid: Arc<Mutex<Option<u32>>>,
 }
 
 /// Forwards backend events to the webview.
@@ -139,11 +108,6 @@ impl Sink for TauriSink {
     }
 }
 
-impl AppState {
-    fn track(&self, pid: u32) { self.children.lock().unwrap().insert(pid); }
-    fn untrack(&self, pid: u32) { self.children.lock().unwrap().remove(&pid); }
-}
-
 // ---------------------------------------------------------------- processes
 
 fn hide_console(cmd: &mut Command) -> &mut Command {
@@ -156,139 +120,6 @@ fn hide_console(cmd: &mut Command) -> &mut Command {
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
     cmd
-}
-
-// Killing only the python PID would orphan any workers it started; taskkill
-// /T takes down the whole tree.
-fn kill_tree(pid: u32) {
-    #[cfg(windows)]
-    {
-        let _ = hide_console(Command::new("taskkill").args(["/PID", &pid.to_string(), "/T", "/F"])).status();
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
-    }
-}
-
-fn pump<R: Read + Send + 'static>(mut reader: R, sink: impl Fn(String) + Send + 'static) -> JoinHandle<()> {
-    thread::spawn(move || {
-        let mut buf = [0u8; 8192];
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => sink(String::from_utf8_lossy(&buf[..n]).into_owned()),
-            }
-        }
-    })
-}
-
-/// Run a tool to completion, streaming its stdout and stderr to `log`.
-fn run_command(state: &AppState, exe: &Path, args: &[String], log: &dyn Fn(&str)) -> Result<(), String> {
-    let mut cmd = Command::new(exe);
-    cmd.args(args)
-        .env("UV_PYTHON_INSTALL_DIR", state.paths.uv_python_dir())
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = hide_console(&mut cmd)
-        .spawn()
-        .map_err(|e| format!("failed to start {}: {e}", exe.display()))?;
-    state.track(child.id());
-
-    // Both pipes drain on their own threads; a full stderr pipe would
-    // otherwise stall uv/pip mid-install.
-    let (tx, rx) = mpsc::channel::<String>();
-    let tx2 = tx.clone();
-    let out = pump(child.stdout.take().unwrap(), move |s| { let _ = tx.send(s); });
-    let err = pump(child.stderr.take().unwrap(), move |s| { let _ = tx2.send(s); });
-    for msg in rx {
-        log(&msg);
-    }
-    let _ = out.join();
-    let _ = err.join();
-
-    let status = child.wait().map_err(|e| e.to_string());
-    state.untrack(child.id());
-    let status = status?;
-    if status.success() {
-        Ok(())
-    } else {
-        let code = status.code().map_or_else(|| "?".to_string(), |c| c.to_string());
-        Err(format!("{} {} exited with code {code}", exe.display(), args.join(" ")))
-    }
-}
-
-struct BackendProc {
-    child: Child,
-    readers: Vec<JoinHandle<()>>,
-}
-
-impl BackendProc {
-    /// Waits for exit, then for the readers, so every event is delivered
-    /// before the caller reports the process as finished.
-    fn wait(mut self) -> Option<i32> {
-        let code = self.child.wait().ok().and_then(|s| s.code());
-        for r in self.readers {
-            let _ = r.join();
-        }
-        code
-    }
-}
-
-/// Spawn a backend script that prints one JSON object per stdout line.
-fn spawn_backend(
-    state: &AppState,
-    script: &str,
-    args: &[String],
-    on_event: impl Fn(Value) + Send + 'static,
-    on_log: impl Fn(String) + Send + Sync + 'static,
-) -> Result<BackendProc, String> {
-    let p = &state.paths;
-    if !p.python_exe().exists() {
-        return Err("Python runtime is not installed. Run first-time setup.".into());
-    }
-    let backend = p.backend();
-    let mut cmd = Command::new(p.python_exe());
-    cmd.arg(backend.join(script))
-        .args(args)
-        .current_dir(&backend)
-        .env("PYTHONUNBUFFERED", "1")
-        .env("PYTHONIOENCODING", "utf-8")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    let mut child = hide_console(&mut cmd)
-        .spawn()
-        .map_err(|e| format!("failed to start python: {e}"))?;
-    state.track(child.id());
-
-    let on_log = Arc::new(on_log);
-    let log_out = on_log.clone();
-    let stdout = child.stdout.take().unwrap();
-    let out = thread::spawn(move || {
-        let mut reader = BufReader::new(stdout);
-        let mut line = Vec::new();
-        loop {
-            line.clear();
-            match reader.read_until(b'\n', &mut line) {
-                Ok(0) | Err(_) => break,
-                Ok(_) => {
-                    let text = String::from_utf8_lossy(&line);
-                    let text = text.trim();
-                    if text.is_empty() {
-                        continue;
-                    }
-                    match serde_json::from_str::<Value>(text) {
-                        Ok(v) => on_event(v),
-                        Err(_) => log_out(format!("[unparsed stdout] {text}")),
-                    }
-                }
-            }
-        }
-    });
-    let err = pump(child.stderr.take().unwrap(), move |s| on_log(s));
-    Ok(BackendProc { child, readers: vec![out, err] })
 }
 
 // ---------------------------------------------------------------- settings
@@ -338,58 +169,11 @@ fn env_status(state: State<'_, AppState>) -> Value {
         .map(|v| json!({ "key": v.key, "label": v.label, "native": loc.as_ref().is_some_and(|l| l.has(v.key)) }))
         .collect();
     json!({
-        "pythonInstalled": state.paths.python_exe().exists(),
-        "depsInstalled": state.paths.deps_marker().exists(),
         // The native engine counts as installed once every PLONK model is: an
         // older install with only OSV-5M is offered the (incremental) install.
         "native": loc.as_ref().is_some_and(|l| plonk::VARIANTS.iter().all(|v| l.has(v.key))),
         "models": models,
     })
-}
-
-fn download(url: &str, dest: &Path, log: &dyn Fn(&str)) -> Result<(), String> {
-    let resp = ureq::get(url).call().map_err(|e| format!("Download failed: {e}"))?;
-    let total: u64 = resp.header("Content-Length").and_then(|s| s.parse().ok()).unwrap_or(0);
-    let mut reader = resp.into_reader();
-    let mut file = fs::File::create(dest).map_err(|e| e.to_string())?;
-    let mut buf = vec![0u8; 64 * 1024];
-    let (mut received, mut last_pct) = (0u64, u64::MAX);
-    loop {
-        let n = reader.read(&mut buf).map_err(|e| format!("Download failed: {e}"))?;
-        if n == 0 {
-            break;
-        }
-        file.write_all(&buf[..n]).map_err(|e| e.to_string())?;
-        received += n as u64;
-        if total > 0 {
-            let pct = received * 100 / total;
-            if pct != last_pct {
-                last_pct = pct;
-                log(&format!("Downloading uv... {pct}%"));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn ensure_uv(state: &AppState, log: &dyn Fn(&str)) -> Result<(), String> {
-    let p = &state.paths;
-    if p.uv_exe().exists() {
-        return Ok(());
-    }
-    fs::create_dir_all(p.runtime()).map_err(|e| e.to_string())?;
-    log("Downloading uv (Python package/interpreter manager)...");
-    let url = format!("https://github.com/astral-sh/uv/releases/download/{UV_VERSION}/uv-x86_64-pc-windows-msvc.zip");
-    download(&url, &p.uv_zip(), log)?;
-
-    log("Extracting uv...");
-    fs::create_dir_all(p.uv_dir()).map_err(|e| e.to_string())?;
-    let zip = fs::File::open(p.uv_zip()).map_err(|e| e.to_string())?;
-    zip::ZipArchive::new(zip)
-        .and_then(|mut a| a.extract(p.uv_dir()))
-        .map_err(|e| format!("Extracting uv failed: {e}"))?;
-    let _ = fs::remove_file(p.uv_zip());
-    Ok(())
 }
 
 fn query_gpu() -> Value {
@@ -407,37 +191,6 @@ fn query_gpu() -> Value {
     let name = parts.next().filter(|s| !s.is_empty());
     let vram: Option<u64> = parts.next().and_then(|s| s.parse().ok());
     json!({ "hasGpu": true, "gpuName": name, "vramMb": vram })
-}
-
-fn install_env(state: &AppState, log: &dyn Fn(&str)) -> Result<Value, String> {
-    let p = &state.paths;
-    ensure_uv(state, log)?;
-    let uv = p.uv_exe();
-    let s = |x: &Path| x.to_string_lossy().into_owned();
-
-    log(&format!("Installing Python {PYTHON_VERSION} (managed by uv, self-contained)..."));
-    run_command(state, &uv, &["python".into(), "install".into(), PYTHON_VERSION.into()], log)?;
-
-    log("Creating virtual environment...");
-    run_command(state, &uv, &["venv".into(), s(&p.venv()), "--python".into(), PYTHON_VERSION.into(), "--clear".into()], log)?;
-
-    log("Checking for an NVIDIA GPU...");
-    let gpu = query_gpu();
-    let has_gpu = gpu["hasGpu"].as_bool().unwrap_or(false);
-    if has_gpu {
-        let name = gpu["gpuName"].as_str().unwrap_or("unknown model");
-        let vram = gpu["vramMb"].as_u64().map(|mb| format!(", {:.1}GB", mb as f64 / 1024.0)).unwrap_or_default();
-        log(&format!("NVIDIA GPU detected ({name}{vram}), installing CUDA-enabled torch."));
-    } else {
-        log("No NVIDIA GPU detected, installing CPU-only torch (inference will be slower).");
-    }
-
-    let mut args: Vec<String> = vec!["pip".into(), "install".into(), "--python".into(), s(&p.python_exe()), "torch".into(), "torchvision".into()];
-    if has_gpu {
-        args.extend(["--index-url".into(), CUDA_TORCH_INDEX.into()]);
-    }
-    run_command(state, &uv, &args, log)?;
-    Ok(gpu)
 }
 
 fn sha256_file(path: &Path) -> Option<String> {
@@ -474,27 +227,11 @@ fn fetch(url: &str, dest: &Path, on_bytes: &mut dyn FnMut(u64)) -> Result<String
     Ok(format!("{:x}", h.finalize()))
 }
 
-/// Why the native engine could not be installed.
-enum NativeError {
-    /// The model host can't be reached, or the engine can't run on this
-    /// machine. First-run setup falls back to the Python runtime.
-    Unavailable(String),
-    /// A download or integrity check failed part-way. Retrying is the fix;
-    /// starting a multi-GB Python install instead would not be.
-    Failed(String),
-}
-
-impl From<String> for NativeError {
-    fn from(e: String) -> Self {
-        NativeError::Failed(e)
-    }
-}
-
 /// Download the native engine: ONNX Runtime + DirectML from NuGet and the
 /// exported models (all three PLONK models) from the model host. Files already
 /// present with the right hash are kept. `progress(done, total, status)` (bytes)
 /// drives the setup screen.
-fn install_native(state: &AppState, progress: &dyn Fn(u64, u64, &str), log: &dyn Fn(&str)) -> Result<(), NativeError> {
+fn install_native(state: &AppState, progress: &dyn Fn(u64, u64, &str), log: &dyn Fn(&str)) -> Result<(), String> {
     let p = &state.paths;
     let models = manifest_models()?;
     let base = std::env::var("WAYPOINT_MODEL_URL").unwrap_or_else(|_| MODEL_BASE_URL.to_string());
@@ -504,7 +241,7 @@ fn install_native(state: &AppState, progress: &dyn Fn(u64, u64, &str), log: &dyn
     let first = models[0]["name"].as_str().unwrap_or_default();
     ureq::head(&format!("{base}/{first}"))
         .call()
-        .map_err(|e| NativeError::Unavailable(format!("the model files are not available at {base} ({e})")))?;
+        .map_err(|e| format!("The model files are not available at {base} ({e}). Check your internet connection and retry."))?;
 
     let total: u64 = RUNTIME_FILES.iter().map(|f| f.package_bytes).sum::<u64>()
         + models.iter().map(|m| m["bytes"].as_u64().unwrap_or(0)).sum::<u64>();
@@ -543,7 +280,7 @@ fn install_native(state: &AppState, progress: &dyn Fn(u64, u64, &str), log: &dyn
         let _ = fs::remove_file(&pkg);
         let got = format!("{:x}", Sha256::digest(&bytes));
         if got != f.sha256 {
-            return Err(format!("{} from {} {} has an unexpected hash ({got})", f.file, f.package, f.version).into());
+            return Err(format!("{} from {} {} has an unexpected hash ({got})", f.file, f.package, f.version));
         }
         fs::write(&dest, bytes).map_err(|e| e.to_string())?;
     }
@@ -561,7 +298,7 @@ fn install_native(state: &AppState, progress: &dyn Fn(u64, u64, &str), log: &dyn
         let got = fetch(&format!("{base}/{name}"), &part, &mut |n| tick(n, "Downloading models"))?;
         if got != want {
             let _ = fs::remove_file(&part);
-            return Err(format!("{name} failed its integrity check (sha256 {got}, expected {want})").into());
+            return Err(format!("{name} failed its integrity check (sha256 {got}, expected {want})"));
         }
         fs::rename(&part, &dest).map_err(|e| e.to_string())?;
     }
@@ -571,9 +308,9 @@ fn install_native(state: &AppState, progress: &dyn Fn(u64, u64, &str), log: &dyn
 /// Load the native engine and time its PLONK sampler (DirectML, else CPU).
 /// Returns (samples/s, accelerator used). Any failure here means the engine
 /// can't run on this machine.
-fn native_calibration(state: &AppState, log: &dyn Fn(&str)) -> Result<(f64, &'static str), NativeError> {
+fn native_calibration(state: &AppState, log: &dyn Fn(&str)) -> Result<(f64, &'static str), String> {
     let p = &state.paths;
-    let unusable = |e: String| NativeError::Unavailable(format!("the native engine could not start ({e})"));
+    let unusable = |e: String| format!("The inference engine could not start ({e})");
     init_runtime(&p.ort_dir().join("onnxruntime.dll")).map_err(|e| {
         unusable(format!("{e}. ONNX Runtime needs the Microsoft Visual C++ 2015-2022 Redistributable (x64)"))
     })?;
@@ -590,7 +327,7 @@ fn native_calibration(state: &AppState, log: &dyn Fn(&str)) -> Result<(f64, &'st
     Ok((sps, accel))
 }
 
-fn setup_native(app: &AppHandle) -> Result<(), NativeError> {
+fn setup_native(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     let p = &state.paths;
     let send = |v: Value| { let _ = app.emit("env-progress", v); };
@@ -629,101 +366,10 @@ fn samples_from_throughput(samples_per_sec: f64) -> u64 {
     ((raw / 64.0).round() as u64 * 64).clamp(256, 8192)
 }
 
-fn run_calibration(app: &AppHandle) -> Result<f64, String> {
-    let state = app.state::<AppState>();
-    let result: Arc<Mutex<Option<f64>>> = Arc::default();
-    let sink = result.clone();
-    let log_app = app.clone();
-    let proc = spawn_backend(
-        &state,
-        "calibrate.py",
-        &[],
-        move |evt| {
-            if evt["event"] == "calibration" {
-                *sink.lock().unwrap() = evt["samples_per_sec"].as_f64();
-            }
-        },
-        move |msg| { let _ = log_app.emit("env-progress", json!({ "event": "log", "message": msg.trim() })); },
-    )?;
-    let pid = proc.child.id();
-    let code = proc.wait();
-    state.untrack(pid);
-    let measured = *result.lock().unwrap();
-    match (code, measured) {
-        (Some(0), Some(sps)) => Ok(sps),
-        _ => Err(format!("calibration process exited with code {}", code.map_or("?".into(), |c| c.to_string()))),
-    }
-}
-
-/// First-run setup: the native engine when its files can be fetched, else the
-/// Python runtime. `native_only` (the Settings upgrade button) never falls back.
-fn setup_env(app: &AppHandle, native_only: bool) -> Result<(), String> {
-    match setup_native(app) {
-        Ok(()) => Ok(()),
-        Err(NativeError::Failed(e)) => Err(e),
-        Err(NativeError::Unavailable(e)) if native_only => Err(e),
-        Err(NativeError::Unavailable(e)) => {
-            let msg = format!("Native engine unavailable: {e}. Installing the Python runtime instead.");
-            let _ = app.emit("env-progress", json!({ "event": "log", "message": msg }));
-            setup_python(app)
-        }
-    }
-}
-
-fn setup_python(app: &AppHandle) -> Result<(), String> {
-    let state = app.state::<AppState>();
-    let p = &state.paths;
-    let send = |v: Value| { let _ = app.emit("env-progress", v); };
-    let log = |m: &str| send(json!({ "event": "log", "message": m.trim() }));
-
-    send(json!({ "event": "stage_start", "stage": "python_env" }));
-    let gpu = install_env(&state, &log)?;
-    merge_settings(p, Map::from_iter([("hardware".to_string(), gpu.clone())]))?;
-    send(json!({
-        "event": "stage_done", "stage": "python_env",
-        "gpu_detected": gpu["hasGpu"], "gpu_name": gpu["gpuName"], "gpu_vram_mb": gpu["vramMb"],
-    }));
-
-    send(json!({ "event": "stage_start", "stage": "pipeline_deps" }));
-    log("Installing pipeline dependencies...");
-    let reqs = p.backend().join("requirements_base.txt");
-    let args: Vec<String> = vec![
-        "pip".into(), "install".into(), "--python".into(),
-        p.python_exe().to_string_lossy().into_owned(), "-r".into(), reqs.to_string_lossy().into_owned(),
-    ];
-    run_command(&state, &p.uv_exe(), &args, &log)?;
-    send(json!({ "event": "stage_done", "stage": "pipeline_deps" }));
-
-    // Loads the real model and times a real batch, so the Samples default
-    // reflects measured throughput on this machine (see calibrate.py).
-    send(json!({ "event": "stage_start", "stage": "calibrate" }));
-    match run_calibration(app) {
-        Ok(sps) => {
-            let recommended = samples_from_throughput(sps);
-            let mut hardware = gpu.as_object().cloned().unwrap_or_default();
-            hardware.insert("samplesPerSec".into(), json!(sps));
-            hardware.insert("recommendedSamples".into(), json!(recommended));
-            merge_settings(p, Map::from_iter([("hardware".to_string(), Value::Object(hardware))]))?;
-            send(json!({ "event": "stage_done", "stage": "calibrate", "samples_per_sec": sps, "recommended_samples": recommended }));
-        }
-        Err(e) => {
-            log(&format!("Calibration skipped: {e}"));
-            send(json!({ "event": "stage_done", "stage": "calibrate" }));
-        }
-    }
-
-    fs::create_dir_all(p.runtime()).map_err(|e| e.to_string())?;
-    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    fs::write(p.deps_marker(), stamp.to_string()).map_err(|e| e.to_string())?;
-    send(json!({ "event": "setup_complete" }));
-    Ok(())
-}
-
 #[tauri::command]
-async fn env_setup(app: AppHandle, native_only: Option<bool>) -> Value {
+async fn env_setup(app: AppHandle) -> Value {
     let handle = app.clone();
-    let native_only = native_only.unwrap_or(false);
-    let result = tauri::async_runtime::spawn_blocking(move || setup_env(&handle, native_only))
+    let result = tauri::async_runtime::spawn_blocking(move || setup_native(&handle))
         .await
         .unwrap_or_else(|e| Err(e.to_string()));
     match result {
@@ -735,12 +381,14 @@ async fn env_setup(app: AppHandle, native_only: Option<bool>) -> Value {
     }
 }
 
-/// Delete every downloaded runtime and model (Python and native).
+/// Delete every downloaded runtime and model (and a Python engine left by an
+/// older version).
 #[tauri::command]
 fn env_purge(state: State<'_, AppState>) -> Value {
     let p = &state.paths;
     let mut errors = vec![];
-    for dir in [p.runtime(), p.onnx_dir(), p.ort_dir()] {
+    let [py_runtime, py_backend] = p.legacy_python();
+    for dir in [p.onnx_dir(), p.ort_dir(), py_runtime, py_backend] {
         match fs::remove_dir_all(&dir) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -753,6 +401,82 @@ fn env_purge(state: State<'_, AppState>) -> Value {
     } else {
         json!({ "ok": false, "error": format!("{}. Restart Waypoint and purge again.", errors.join("; ")) })
     }
+}
+
+// ---------------------------------------------------------------- updates
+
+/// The updater, pointed at the release manifest in tauri.conf.json.
+/// WAYPOINT_UPDATE_URL points it at another manifest (HTTPS only, unless the
+/// build's config sets plugins.updater.dangerousInsecureTransportProtocol).
+fn updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, String> {
+    let mut b = app.updater_builder();
+    if let Ok(url) = std::env::var("WAYPOINT_UPDATE_URL") {
+        let parsed = url.parse().map_err(|e| format!("WAYPOINT_UPDATE_URL: {e}"))?;
+        b = b.endpoints(vec![parsed]).map_err(|e| e.to_string())?;
+    }
+    b.build().map_err(|e| e.to_string())
+}
+
+/// Is a newer release published? `auto` is the startup check, skipped in
+/// debug builds so development runs don't nag.
+#[tauri::command]
+async fn update_check(app: AppHandle, auto: Option<bool>) -> Value {
+    let current = app.package_info().version.to_string();
+    if auto.unwrap_or(false) && cfg!(debug_assertions) {
+        return json!({ "ok": true, "available": false, "current": current, "skipped": true });
+    }
+    let found = match updater(&app) {
+        Ok(u) => u.check().await.map_err(|e| e.to_string()),
+        Err(e) => Err(e),
+    };
+    match found {
+        Ok(Some(u)) => json!({
+            "ok": true, "available": true, "current": current,
+            "version": u.version, "notes": u.body, "date": u.date.map(|d| d.to_string()),
+        }),
+        Ok(None) => json!({ "ok": true, "available": false, "current": current }),
+        Err(e) => json!({ "ok": false, "current": current, "error": e }),
+    }
+}
+
+/// Download the newest release (signature-checked against the public key in
+/// tauri.conf.json), run its installer and restart. Progress goes out as
+/// `update-progress` events: { done, total } in bytes.
+#[tauri::command]
+async fn update_install(app: AppHandle) -> Value {
+    if app.state::<AppState>().active_run.lock().unwrap().is_some() {
+        return json!({ "ok": false, "error": "Stop the running pipeline first." });
+    }
+    let result: Result<(), String> = async {
+        let update = updater(&app)?.check().await.map_err(|e| e.to_string())?.ok_or("No update is available.")?;
+        let (mut done, mut last_pct) = (0u64, u64::MAX);
+        let events = app.clone();
+        update
+            .download_and_install(
+                |chunk, total| {
+                    done += chunk as u64;
+                    let pct = total.map_or(0, |t| done * 100 / t.max(1));
+                    if pct != last_pct {
+                        last_pct = pct;
+                        let _ = events.emit("update-progress", json!({ "done": done, "total": total }));
+                    }
+                },
+                || {},
+            )
+            .await
+            .map_err(|e| e.to_string())
+    }
+    .await;
+    match result {
+        // On Windows the installer takes over and restarts Waypoint; elsewhere, restart here.
+        Ok(()) => app.restart(),
+        Err(e) => json!({ "ok": false, "error": e }),
+    }
+}
+
+#[tauri::command]
+fn app_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
 }
 
 // ---------------------------------------------------------------- images
@@ -830,20 +554,12 @@ fn run_pipeline(app: AppHandle, mode: Mode, args: RunArgs) -> Result<u32, String
     let image = state.image.lock().unwrap().clone().ok_or("No image selected")?;
     let settings = read_settings(&state.paths);
     let model = settings.get("plonkModel").and_then(Value::as_str).and_then(plonk::variant).unwrap_or(&plonk::VARIANTS[0]);
-    // The native engine runs a model whose files are all installed, with no
-    // Python; otherwise the whole run goes through the Python model server.
-    let engine = native::locate(&state.paths.data);
-    let has_engine = engine.is_some();
-    let native_loc = engine.filter(|l| l.has(model.key));
-    let python = state.paths.python_exe();
-    if native_loc.is_none() && !python.exists() {
-        return Err(if has_engine {
-            format!("The {} model is not installed. Open Settings and install the native engine, or pick another model.", model.label)
-        } else {
-            "No inference engine is installed. Run first-time setup.".into()
-        });
+    let Some(loc) = native::locate(&state.paths.data) else {
+        return Err("The inference engine is not installed. Restart Waypoint to run setup.".into());
+    };
+    if !loc.has(model.key) {
+        return Err(format!("The {} model is not installed. Restart Waypoint to run setup.", model.label));
     }
-    let needs_python = native_loc.is_none();
 
     let mut ra = CoreArgs::new(mode.clone(), image);
     ra.model = model.key.into();
@@ -867,54 +583,18 @@ fn run_pipeline(app: AppHandle, mode: Mode, args: RunArgs) -> Result<u32, String
     }
 
     let cancel = Cancel::new();
-    let server_pid: Arc<Mutex<Option<u32>>> = Arc::default();
-    *active = Some(ActiveRun { cancel: cancel.clone(), server_pid: server_pid.clone() });
+    *active = Some(ActiveRun { cancel: cancel.clone() });
     drop(active);
 
-    let script = state.paths.backend().join("model_server.py");
-    let cwd = state.paths.backend();
     thread::spawn(move || {
         let sink = TauriSink { app: app.clone() };
-        let spawn_py = || {
-            let log_app = app.clone();
-            match PyModels::spawn(&python, &script, &cwd, move |s| {
-                let _ = log_app.emit("pipeline-event", json!({ "event": "log", "message": s }));
-            }) {
-                Ok(m) => {
-                    let pid = m.pid();
-                    *server_pid.lock().unwrap() = Some(pid);
-                    app.state::<AppState>().track(pid);
-                    Some(m)
-                }
-                Err(e) => {
-                    sink.log(&format!("could not start the Python engine: {e}"));
-                    None
-                }
-            }
-        };
-        let mut py = if needs_python { spawn_py() } else { None };
-        let native = native_loc.and_then(|loc| {
-            native::open(&loc, model.key, &|s| sink.log(s)).map_err(|e| sink.log(&format!("native engine failed to load: {e}"))).ok()
-        });
-        // A native engine that won't load falls back to an installed Python engine.
-        if native.is_none() && py.is_none() && python.exists() {
-            sink.log("falling back to the Python engine");
-            py = spawn_py();
-        }
-        let code = match (&native, &py) {
-            (Some(n), _) => core_run(&ra, n, &sink, &cancel),
-            (None, Some(m)) => core_run(&ra, &**m, &sink, &cancel),
-            (None, None) => {
-                sink.event(json!({ "event": "error", "message": "No inference engine could be started. See the log." }));
+        let code = match native::open(&loc, model.key, &|s| sink.log(s)) {
+            Ok(models) => core_run(&ra, &models, &sink, &cancel),
+            Err(e) => {
+                sink.event(json!({ "event": "error", "message": format!("The inference engine could not start: {e}") }));
                 1
             }
         };
-        drop(native);
-        if let Some(m) = py {
-            let pid = m.pid();
-            m.shutdown();
-            app.state::<AppState>().untrack(pid);
-        }
         *app.state::<AppState>().active_run.lock().unwrap() = None;
         let _ = app.emit("pipeline-event", json!({ "event": "exit", "code": code }));
     });
@@ -935,53 +615,24 @@ fn run_point(app: AppHandle, args: RunArgs) -> Result<u32, String> {
 fn cancel_run(state: State<'_, AppState>) {
     if let Some(run) = state.active_run.lock().unwrap().as_ref() {
         run.cancel.cancel();
-        // Killing the model server unblocks any request the backend is waiting on.
-        if let Some(pid) = *run.server_pid.lock().unwrap() {
-            kill_tree(pid);
-        }
     }
 }
 
 // ---------------------------------------------------------------- startup
 
-/// Unpack the embedded backend, rewriting only files whose bytes changed.
-fn extract_dir(dir: &Dir, root: &Path) -> std::io::Result<()> {
-    for file in dir.files() {
-        let dest = root.join(file.path());
-        if file.path().components().any(|c| c.as_os_str() == "__pycache__") {
-            continue;
-        }
-        if fs::read(&dest).map(|cur| cur == file.contents()).unwrap_or(false) {
-            continue;
-        }
-        if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(&dest, file.contents())?;
-    }
-    for sub in dir.dirs() {
-        if sub.path().file_name().is_some_and(|n| n == "__pycache__") {
-            continue;
-        }
-        extract_dir(sub, root)?;
-    }
-    Ok(())
-}
-
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let data = match std::env::var_os("WAYPOINT_DATA_DIR") {
                 Some(dir) => PathBuf::from(dir),
                 None => app.path().data_dir()?.join(DATA_DIR_NAME),
             };
             let paths = Paths { data };
-            extract_dir(&BACKEND, &paths.backend())?;
             app.manage(AppState {
                 paths,
-                children: Mutex::default(),
                 active_run: Mutex::default(),
                 image: Mutex::default(),
             });
@@ -996,18 +647,13 @@ pub fn run() {
             select_image,
             load_image,
             open_external,
+            update_check,
+            update_install,
+            app_version,
             run_one,
             run_point,
             cancel_run,
         ])
-        .build(tauri::generate_context!())
-        .expect("error while building Waypoint")
-        .run(|app, event| {
-            if let RunEvent::Exit = event {
-                let pids: Vec<u32> = app.state::<AppState>().children.lock().unwrap().iter().copied().collect();
-                for pid in pids {
-                    kill_tree(pid);
-                }
-            }
-        });
+        .run(tauri::generate_context!())
+        .expect("error while running Waypoint");
 }

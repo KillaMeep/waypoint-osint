@@ -516,6 +516,16 @@ h1, h2, h3 { margin: 0; font-family: var(--font-display); letter-spacing: -.01em
 
 .note { font-size: 12.5px; color: var(--muted); }
 
+/* ---------- Update prompt ---------- */
+.update-card {
+  position: fixed; right: 18px; bottom: 18px; z-index: 2500; width: min(360px, calc(100vw - 36px));
+  padding: 14px 16px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 10px; animation: rise .2s ease;
+}
+.update-text { display: flex; flex-direction: column; gap: 3px; }
+.update-text b { font-size: 13.5px; }
+.update-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
 /* ---------- Lightbox / drop / toast ---------- */
 .lightbox {
   position: fixed; inset: 0; z-index: 3000; display: grid; place-items: center; padding: 32px;

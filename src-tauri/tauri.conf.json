@@ -29,17 +29,38 @@
         "img-src": "'self' data: blob: https://*.tile.openstreetmap.org",
         "connect-src": "ipc: http://ipc.localhost"
       },
-      "dangerousDisableAssetCspModification": ["style-src"]
+      "dangerousDisableAssetCspModification": [
+        "style-src"
+      ]
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkwM0IwOEI3QjMzQkQyNzYKUldSMjBqdXp0d2c3a0lubC9RQ1htenhGSmNobGZDV0Ywb1FQdUxGaVpsZHVtM29Ycmc3Y2d0UlgK",
+      "endpoints": [
+        "https://github.com/KillaMeep/waypoint-osint/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

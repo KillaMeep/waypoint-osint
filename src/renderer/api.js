@@ -15,10 +15,16 @@
     setSettings: (settings) => invoke('settings_set', { settings }),
 
     getEnvStatus: () => invoke('env_status'),
-    // { nativeOnly: true } installs only the native engine (no Python fallback).
-    runEnvSetup: (opts) => invoke('env_setup', { nativeOnly: !!(opts && opts.nativeOnly) }),
+    runEnvSetup: () => invoke('env_setup'),
     purgeEnv: () => invoke('env_purge'),
     onEnvProgress: (cb) => listen('env-progress', (e) => cb(e.payload)),
+
+    // Updates: check resolves to { ok, available, current, version?, notes?, error? };
+    // install downloads, runs the installer and restarts (resolves only on failure).
+    appVersion: () => invoke('app_version'),
+    checkUpdate: (auto) => invoke('update_check', { auto: !!auto }),
+    installUpdate: () => invoke('update_install'),
+    onUpdateProgress: (cb) => listen('update-progress', (e) => cb(e.payload)),
 
     // Both resolve to { path, name, bytes, dataUrl } (selectImage: or null).
     selectImage: () => invoke('select_image'),

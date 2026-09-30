@@ -3,7 +3,8 @@
 /* ============================================================
    Waypoint renderer: one persistent map, a sidebar with two modes
    (Locate / Refine). The pipeline event contract is fixed by
-   python_backend/run_pipeline.py; the shell bridge lives in api.js.
+   waypoint-core's pipeline (after the original run_pipeline.py); the shell
+   bridge lives in api.js.
    ============================================================ */
 
 const $ = (id) => document.getElementById(id);
@@ -695,13 +696,12 @@ $('settingsBtn').addEventListener('click', async () => {
   resetPurgeButton();
   const env = await window.api.getEnvStatus();
   renderModels(s, env);
-  $('engineInfo').textContent = env.native
-    ? 'Native: ONNX Runtime with DirectML (CPU fallback). No Python needed.'
-    : 'Python: PyTorch through the local model server.';
-  $('nativeUpgrade').classList.toggle('hidden', !!env.native);
+  $('engineInfo').textContent = 'ONNX Runtime with DirectML (CPU fallback).';
+  $('versionInfo').textContent = `Waypoint ${await window.api.appVersion()}`;
+  $('updateStatus').textContent = '';
   const hw = s.hardware;
-  // The native engine records what it runs on (accel); older Python installs
-  // only know about NVIDIA cards (hasGpu / gpuName from nvidia-smi).
+  // Setup records what the engine runs on (accel); settings written by older
+  // versions only know about NVIDIA cards (hasGpu / gpuName from nvidia-smi).
   const device = !hw ? null
     : hw.accel === 'CPU' ? 'CPU (no DirectML GPU)'
     : hw.accel === 'DirectML' ? (hw.gpuName ? `${hw.gpuName} via DirectML` : 'GPU via DirectML')
@@ -733,14 +733,12 @@ const MODEL_INFO = {
   inat: 'Nature photos from iNaturalist: plants, animals and wild outdoor scenes.',
 };
 
-// Rows from env.models ({ key, label, native }). A model is usable when it
-// runs natively, or on the Python engine when one is installed.
+// Rows from env.models ({ key, label, native }).
 function renderModels(settings, env) {
-  const python = env.pythonInstalled && env.depsInstalled;
   const current = settings.plonkModel || 'osv5m';
   $('modelList').innerHTML = (env.models || []).map((m) => {
-    const usable = m.native || python;
-    const status = m.native ? 'Native' : python ? 'Python engine' : 'Not installed';
+    const usable = m.native;
+    const status = m.native ? 'Installed' : 'Not installed';
     return `<label class="model-row${usable ? '' : ' is-off'}">
       <input type="radio" name="plonkModel" value="${m.key}" ${m.key === current ? 'checked' : ''} ${usable ? '' : 'disabled'} />
       <span class="model-text"><b>${esc(m.label)}</b><span class="note">${esc(MODEL_INFO[m.key] || '')}</span></span>
@@ -778,41 +776,15 @@ $('purgeEnvBtn').addEventListener('click', async () => {
 
 /* ============================================================ First-run setup */
 const setupLog = $('setupLog');
-let depsCrawl = null;
-// 'first' = first-run setup (native, falling back to Python);
-// 'native' = the Settings upgrade from a Python install (native only).
-let setupMode = 'first';
-let nativeSetup = false; // the native install is the one running (it reports its own progress)
-
-$('nativeInstallBtn').addEventListener('click', () => {
-  if (state.busy) { toast('Stop the running pipeline first.', true); return; }
-  settingsDialog.close();
-  setupMode = 'native';
-  document.querySelector('#setupScreen h1').textContent = 'Install the native engine';
-  document.querySelector('#setupScreen p.muted').textContent =
-    'Waypoint downloads ONNX Runtime and its models (about 3 GB). Runs then need no Python. Your Python install stays as a fallback until you delete it.';
-  $('setupBackBtn').classList.remove('hidden');
-  showScreen('setupScreen');
-  $('setupStartBtn').click();
-});
-$('setupBackBtn').addEventListener('click', () => showScreen('mainScreen'));
 function setupAppend(text) { setupLog.textContent += String(text).replace(/\s+$/, '') + '\n'; setupLog.scrollTop = setupLog.scrollHeight; }
 
-// Steps shown beside the dial. The native route is the default; the Python
-// route replaces it when setup falls back (stage python_env).
-const NATIVE_STEPS = [
+// Steps shown beside the dial.
+const SETUP_STEPS = [
   ['runtime', 'ONNX Runtime', 'Inference runtime and DirectML, from NuGet'],
   ['models', 'Models', 'PLONK (3 models), StreetCLIP, DINOv2, DISK, LightGlue'],
   ['speed', 'Speed test', 'Picks a default for Samples'],
 ];
-const PYTHON_STEPS = [
-  ['manager', 'Python manager', 'uv'],
-  ['python', 'Python 3.11', 'Private interpreter and virtual environment'],
-  ['torch', 'PyTorch', 'CUDA build when an NVIDIA card is found'],
-  ['deps', 'Pipeline packages', 'PLONK, kornia, transformers'],
-  ['speed', 'Speed test', 'Picks a default for Samples'],
-];
-let setupSteps = NATIVE_STEPS;
+let setupSteps = SETUP_STEPS;
 let stepStates = {};
 function renderSteps() {
   $('setupSteps').innerHTML = setupSteps.map(([key, name, sub]) => `<li data-state="${stepStates[key] || 'pending'}">
@@ -867,46 +839,22 @@ function setupBytes(done, total) {
   }
   $('setupDetail').textContent = parts.join(' · ');
 }
-function stopCrawl() { if (depsCrawl) { clearInterval(depsCrawl); depsCrawl = null; } }
-function setupPhase(msg) {
-  if (/Downloading uv|Extracting uv/.test(msg)) setStep('manager');
-  else if (/Installing Python|Creating virtual environment/.test(msg)) setStep('python');
-  else if (/Checking for an NVIDIA GPU|No NVIDIA GPU|GPU detected/.test(msg)) setStep('torch');
-  else if (/Installing pipeline dependencies/.test(msg)) setStep('deps');
-  const dl = msg.match(/Downloading uv\.\.\.\s*(\d+)%/);
-  if (dl) return setupBar(parseInt(dl[1], 10) * 0.25, 'Downloading Python manager');
-  if (/Downloading uv \(/.test(msg))            return setupBar(2,  'Downloading Python manager');
-  if (/Extracting uv/.test(msg))                return setupBar(27, 'Extracting Python manager');
-  if (/Installing Python/.test(msg))            return setupBar(42, 'Installing Python runtime');
-  if (/Creating virtual environment/.test(msg)) return setupBar(55, 'Creating virtual environment');
-  if (/Checking for an NVIDIA GPU/.test(msg))   return setupBar(60, 'Detecting GPU');
-  if (/No NVIDIA GPU/.test(msg))                return setupBar(66, 'Installing PyTorch (CPU)');
-  if (/GPU detected/.test(msg))                 return setupBar(66, 'Installing PyTorch (GPU)');
-  if (/Installing pipeline dependencies/.test(msg)) {
-    setupBar(78, 'Installing dependencies');
-    stopCrawl();
-    depsCrawl = setInterval(() => { if (setupPct < 95) setupBar(setupPct + 0.4); }, 700);
-  }
-}
 $('setupStartBtn').addEventListener('click', async () => {
   const btn = $('setupStartBtn');
   btn.disabled = true;
   btn.classList.add('hidden'); // the dial and steps show progress; back again as Retry on failure
-  $('setupBackBtn').disabled = true;
-  useSteps(NATIVE_STEPS);
+  useSteps(SETUP_STEPS);
   rate = { t: 0, done: 0, bps: 0 };
   $('setupDetail').textContent = '';
   setDial('running');
   setupBar(1, 'Starting…');
-  const result = await window.api.runEnvSetup({ nativeOnly: setupMode === 'native' });
-  $('setupBackBtn').disabled = false;
-  stopCrawl();
+  const result = await window.api.runEnvSetup();
   if (result.ok) {
     setupBar(100, 'Setup complete');
     endSteps(true);
     setDial('done');
     $('setupPct').textContent = 'Done';
-    setTimeout(async () => { showScreen('mainScreen'); await applyRecommendedSamples(); }, 1400);
+    setTimeout(async () => { showScreen('mainScreen'); await applyRecommendedSamples(); scheduleUpdateCheck(); }, 1400);
   } else {
     setupAppend(`Setup failed: ${result.error}`);
     endSteps(false);
@@ -927,18 +875,11 @@ window.api.onEnvProgress((p) => {
     if (p.total) setupBytes(p.done, p.total);
   } else if (p.event === 'log') {
     setupAppend(p.message);
-    for (const line of String(p.message).split('\n')) if (line.trim()) setupPhase(line);
   } else if (p.event === 'stage_start') {
     setupAppend(`--- ${p.stage} ---`);
-    if (p.stage === 'python_env') { useSteps(PYTHON_STEPS); $('setupDetail').textContent = ''; }
-    if (p.stage === 'pipeline_deps') setStep('deps');
     if (p.stage === 'calibrate') { setStep('speed'); $('setupDetail').textContent = 'Timing real sampling batches'; }
-    if (p.stage === 'calibrate') { stopCrawl(); if (setupMode === 'first' && !nativeSetup) setupBar(96, 'Measuring sampling speed'); }
-    if (p.stage === 'native_env') nativeSetup = true;
   } else if (p.event === 'stage_done') {
     setupAppend(`${p.stage} done.`);
-    if (p.stage === 'python_env' && 'gpu_detected' in p)
-      setupAppend(p.gpu_detected ? 'NVIDIA GPU detected.' : 'No GPU detected, CPU mode (slower).');
     if (p.stage === 'calibrate' && p.samples_per_sec) {
       setupAppend(`Measured ${p.samples_per_sec.toFixed(0)} samples/sec, default Samples set to ${p.recommended_samples}.`);
       $('setupDetail').textContent = `${p.samples_per_sec.toFixed(0)} samples/s · default Samples ${p.recommended_samples}`;
@@ -946,10 +887,67 @@ window.api.onEnvProgress((p) => {
   }
 });
 
+/* ============================================================ Updates */
+// The Rust side checks the signed release manifest (latest.json on the newest
+// GitHub release). The card offers the update; "Later" hides it for that version.
+let pendingUpdate = null;
+function showUpdate(u) {
+  pendingUpdate = u;
+  $('updateTitle').textContent = `Waypoint ${u.version} is available`;
+  $('updateSub').textContent = `You have ${u.current}. It installs in a few seconds, then Waypoint restarts.`;
+  $('updateProgress').classList.add('hidden');
+  $('updateInstallBtn').disabled = false;
+  $('updateLaterBtn').disabled = false;
+  $('updateCard').classList.remove('hidden');
+}
+async function checkForUpdates(auto) {
+  const r = await window.api.checkUpdate(auto);
+  if (r.ok && r.available) {
+    const s = await window.api.getSettings();
+    if (!auto || s.updateDismissed !== r.version) showUpdate(r);
+  }
+  return r;
+}
+function scheduleUpdateCheck() { setTimeout(() => checkForUpdates(true).catch(() => {}), 4000); }
+$('updateLaterBtn').addEventListener('click', async () => {
+  $('updateCard').classList.add('hidden');
+  if (pendingUpdate) await window.api.setSettings({ updateDismissed: pendingUpdate.version });
+});
+$('updateInstallBtn').addEventListener('click', async () => {
+  if (state.busy) { toast('Stop the running pipeline first.', true); return; }
+  $('updateInstallBtn').disabled = true;
+  $('updateLaterBtn').disabled = true;
+  $('updateTitle').textContent = `Downloading Waypoint ${pendingUpdate ? pendingUpdate.version : ''}…`;
+  $('updateSub').textContent = 'Waypoint restarts when it is done.';
+  $('updateBar').style.width = '0%';
+  $('updateProgress').classList.remove('hidden');
+  const r = await window.api.installUpdate(); // on success the app restarts before this returns
+  if (!r.ok) {
+    toast(`Update failed: ${r.error}`, true);
+    if (pendingUpdate) showUpdate(pendingUpdate);
+  }
+});
+window.api.onUpdateProgress((p) => {
+  if (p.total) {
+    $('updateBar').style.width = `${clamp((p.done / p.total) * 100, 0, 100)}%`;
+    $('updateSub').textContent = `${fmtSize(p.done)} of ${fmtSize(p.total)}`;
+  }
+});
+$('updateCheckBtn').addEventListener('click', async () => {
+  const btn = $('updateCheckBtn');
+  btn.disabled = true;
+  $('updateStatus').textContent = 'Checking…';
+  const r = await checkForUpdates(false);
+  btn.disabled = false;
+  $('updateStatus').textContent = !r.ok ? `Could not check: ${r.error}`
+    : r.available ? `Version ${r.version} is available.` : 'You have the latest version.';
+  if (r.ok && r.available) settingsDialog.close();
+});
+
 /* ============================================================ Startup */
 
-// Setup times real sampling batches (plonk::throughput, or calibrate.py on
-// the Python engine) and stores hardware.recommendedSamples. VRAM turned out to be a poor proxy
+// Setup times real sampling batches (plonk::throughput) and stores
+// hardware.recommendedSamples. VRAM turned out to be a poor proxy
 // for throughput; the VRAM tiers below only cover settings written before
 // calibration existed, until the user re-runs setup.
 function recommendedSamples(hw) {
@@ -971,6 +969,6 @@ async function applyRecommendedSamples() {
   resetSteps('full');
   refreshRunButtons();
   const status = await window.api.getEnvStatus();
-  if (status.native || (status.pythonInstalled && status.depsInstalled)) { showScreen('mainScreen'); await applyRecommendedSamples(); }
+  if (status.native) { showScreen('mainScreen'); await applyRecommendedSamples(); scheduleUpdateCheck(); }
   else showScreen('setupScreen');
 })();

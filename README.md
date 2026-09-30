@@ -57,14 +57,19 @@ locally. Only the imagery lookups in the refinement stages send data from your m
 
 ## Download
 
-Get `Waypoint.exe` from the [latest release](https://github.com/KillaMeep/waypoint-osint/releases/latest)
-and run it. It is a single portable exe: no installer, nothing to unpack.
+Download `Waypoint_<version>_x64-setup.exe` from the [latest release](https://github.com/KillaMeep/waypoint-osint/releases/latest)
+and run it. It installs for your user account (no admin prompt) into `%LOCALAPPDATA%\Waypoint`, with a
+Start menu shortcut, and uninstalls from **Settings → Apps**.
+
+Waypoint keeps itself up to date. A few seconds after launch it checks the latest release; when a
+newer build exists, it offers **Install and restart**. Every update is signed, and Waypoint refuses
+one whose signature doesn't match. **Settings → Updates** shows your version and checks on demand.
 
 You need:
 
 - **Windows 10 / 11 (x64).** _(Waypoint does not yet support macOS or Linux.)_ WebView2 ships with both.
-- **Microsoft Visual C++ 2015–2022 Redistributable (x64)**, which ONNX Runtime needs. Most machines already have it; if setup reports that the native engine could not start, [install it](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist).
-- **~3 GB free disk** for the engine and models, and an **internet connection** for first-run setup and the imagery lookups. (The Python fallback needs about 8 GB.)
+- **Microsoft Visual C++ 2015–2022 Redistributable (x64)**, which ONNX Runtime needs. Most machines already have it; if setup reports that the inference engine could not start, [install it](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist).
+- **~3 GB free disk** for the engine and models, and an **internet connection** for first-run setup and the imagery lookups.
 - **Optional: a DirectX 12 GPU** (NVIDIA, AMD or Intel) for faster inference, used through DirectML. Otherwise it runs on the CPU.
 
 ## Run from source
@@ -81,7 +86,7 @@ npm start
 
 ### First launch (automatic, one-time)
 
-On the very first run, Waypoint downloads its **native engine**:
+On the very first run, Waypoint downloads its **inference engine**:
 
 - [ONNX Runtime](https://onnxruntime.ai/) and DirectML, from their official NuGet packages.
 - The exported models (about 2.8 GB) from [the model host](https://huggingface.co/killameep/waypoint-models):
@@ -91,12 +96,9 @@ Waypoint checks every file against a pinned SHA-256 hash before it uses the file
 how fast your machine samples, to pick a default for **Samples**. Everything lands in the app's own
 data folder (`%APPDATA%\geolocator-gui`).
 
-If Waypoint cannot reach the model host, it installs a **portable Python runtime** instead: a
-managed Python 3.11 from [`uv`](https://github.com/astral-sh/uv) with PyTorch. That takes a few
-minutes and about 8 GB. Waypoint never touches your system Python, if you have one.
-
-An install from an older version keeps working on Python. To switch, open **Settings → Install the
-native engine**. To wipe everything and set up again, use **Settings → Delete downloads**.
+If a download or the speed test fails, setup shows the error with **Retry**. Files that already
+passed their hash check are kept. To wipe everything and set up again, use **Settings → Delete
+downloads**. That also removes the Python runtime older versions of Waypoint installed.
 
 ### Choosing a model
 
@@ -109,9 +111,8 @@ native engine**. To wipe everything and set up again, use **Settings → Delete 
 | iNaturalist | Nature photos: plants, animals, wild outdoor scenes | DINOv2 |
 
 Setup installs all three. The retrieval stages rank street-level imagery with the chosen model's
-encoder, as the Python pipeline does. On a Python install, every model runs on the Python engine,
-which downloads its own weights on first use. An older native install with only OSV-5M offers
-**Settings → Install the native engine**, which fetches just the missing files.
+encoder, as the original PyTorch pipeline does. An install from an older version runs setup again on
+launch, which fetches only the missing files.
 
 ### Optional: Mapillary token
 
@@ -124,17 +125,20 @@ The Mapillary refinement stage needs a free API token.
 Without a token, Waypoint skips the Mapillary stage. Google Street View, Panoramax, and
 OpenStreetMap work with no keys at all.
 
-## Building a portable executable
+## Building
 
 ```bash
-npm run dist
+npm run dist        # standalone exe: src-tauri/target/release/waypoint.exe
+npm run installer   # signed NSIS installer: src-tauri/target/release/bundle/nsis/
 ```
 
-Produces a standalone portable exe at `src-tauri/target/release/waypoint.exe`. The frontend and the
-Python fallback scripts are embedded in it. The engine and models download on first launch.
+The frontend is embedded in the exe; the engine and models download on first launch. The installer
+build also signs the updater artifact, so it needs the private key in `TAURI_SIGNING_PRIVATE_KEY`
+(and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""`). The public key is in `src-tauri/tauri.conf.json`.
 
-Every push to `main` builds this exe in GitHub Actions (after the Rust test suite passes) and
-publishes it as a release. The workflow keeps the two newest builds.
+Every push to `main` builds the installer in GitHub Actions (after the Rust test suite passes) and
+publishes it as release `v<major>.<minor>.<run number>`, together with the `latest.json` manifest
+the in-app updater reads. The workflow keeps the two newest releases.
 
 ### Publishing the models
 
@@ -152,9 +156,10 @@ against `src-tauri/models.json`. To produce and publish them:
 For testing, set `WAYPOINT_MODEL_URL` to another host (a local HTTP server works), and
 `WAYPOINT_DATA_DIR` to a scratch folder.
 
-### Parity with the Python pipeline
+### Parity with the original PyTorch pipeline
 
-`tools/parity/` records reference outputs from the original PyTorch pipeline. The ignored tests in
+Waypoint started as a Python + PyTorch app; that pipeline is kept in
+`tools/parity/reference_pipeline/`, and `tools/parity/` records reference outputs from it. The ignored tests in
 `waypoint-core/tests/` compare the Rust port against them. See
 [`tools/parity/REPORT.md`](tools/parity/REPORT.md) for the numbers.
 
@@ -162,7 +167,7 @@ For testing, set `WAYPOINT_MODEL_URL` to another host (a local HTTP server works
 
 Measured on a Ryzen 7 9800X3D with an RTX 5080 (details in [`tools/parity/REPORT.md`](tools/parity/REPORT.md)):
 
-| | Native engine | Python engine |
+| | Waypoint (Rust + ONNX) | Original PyTorch pipeline |
 |---|---|---|
 | Install size (all three models) | ~2.6 GB | ~9.8 GB |
 | PLONK sampling, GPU (OSV-5M) | 1299 samples/s (DirectML) | 1235 samples/s (CUDA) |
@@ -178,7 +183,8 @@ the same clusters.
 |-------|------|
 | Desktop shell | Tauri 2 (Rust) + WebView2 |
 | Pipeline | `waypoint-core` (Rust): orchestration, clustering, sun math, RANSAC, imagery clients |
-| Inference | ONNX Runtime (DirectML, CPU fallback). Python + PyTorch as a fallback engine |
+| Inference | ONNX Runtime (DirectML, CPU fallback), in-process |
+| Install & updates | NSIS installer (per user), signed updates via the Tauri updater and GitHub releases |
 | Coarse geolocation | PLONK (OSV-5M, YFCC or iNaturalist), its flow sampler reimplemented in Rust |
 | Image embedding | StreetCLIP (OSV-5M) · DINOv2 (YFCC, iNaturalist) |
 | Sun/season check | Port of `astral` (sun position vs. OpenStreetMap road bearings) |
