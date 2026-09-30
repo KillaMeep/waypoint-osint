@@ -17,7 +17,7 @@ from plonk_core import Predictor
 pred = Predictor('osv5m', 1)
 pipe = pred.pipeline
 man = json.load(open(os.path.join(REF, 'cands', 'manifest.json')))
-picks = {'pano': IMAGES['pano'], 'photo2': IMAGES['photo2']}
+picks = dict(IMAGES)
 for m in man[:1] + man[10:11] + man[20:21]:
     picks[m['file'].rsplit('.', 1)[0]] = os.path.join(REF, 'cands', m['file'])
 

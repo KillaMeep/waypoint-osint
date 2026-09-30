@@ -2,8 +2,8 @@
 
 How closely the Rust backend (`waypoint-core`) and the ONNX models reproduce the original
 PyTorch pipeline. The reference outputs come from `tools/parity/ref_*.py`, run read-only against
-the original Python environment. The test images are `test_pano.jpg` (a street panorama) and
-`test_photo2.jpg`.
+the original Python environment. The test image is `test_pano.jpg`, a street panorama (kept outside the repo; point
+`WAYPOINT_TEST_IMAGES` at its folder).
 
 Machine: RTX 5080, Windows 11. ONNX Runtime 1.24.4 with DirectML 1.15.4.
 
@@ -28,7 +28,7 @@ cargo test --release --test plonk_parity -- --ignored --nocapture --test-threads
 |---|---|
 | astral sunrise, sunset and azimuth, 920 rows (103 polar) | 0 µs time difference, 2.8e-14° azimuth difference, same polar failures |
 | Sun best-match, 96 cases | 96/96 identical |
-| Sun image statistics (shadow offset, confidence) | pano -18.83 vs -18.86, conf 0.568 vs 0.573; photo2 -0.378 vs -0.393, conf 0.793 vs 0.791 (JPEG decode differences) |
+| Sun image statistics (shadow offset, confidence) | pano -18.83 vs -18.86, conf 0.568 vs 0.573 (JPEG decode differences) |
 | DBSCAN clustering, 5 sample sets | same counts, weights and noise fraction; centres within 1e-4° |
 | RANSAC fundamental-matrix inliers vs OpenCV | 1251 vs 1246, 1109 vs 1119, 14 vs 16 (OpenCV's random sampling can't be reproduced) |
 

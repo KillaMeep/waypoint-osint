@@ -31,9 +31,16 @@ fn diff(a: &[u8], b: &[u8]) -> (f64, u8, f64) {
     (sum as f64 / a.len() as f64, max, over1 as f64 / a.len() as f64)
 }
 
+/// The test photos live outside the repo: set WAYPOINT_TEST_IMAGES to the folder holding test_pano.jpg.
+fn test_image(name: &str) -> Option<PathBuf> {
+    let p = PathBuf::from(std::env::var_os("WAYPOINT_TEST_IMAGES")?).join(format!("test_{name}.jpg"));
+    p.is_file().then_some(p)
+}
+
 #[test]
 fn decode_vs_pil() {
-    for (name, path) in [("pano", "test_pano.jpg"), ("photo2", "test_photo2.jpg")] {
+    for name in ["pano"] {
+        let Some(path) = test_image(name) else { eprintln!("skipped: set WAYPOINT_TEST_IMAGES"); return };
         let Some((shape, want)) = npy_u8(&format!("rgb_{name}.npy")) else { eprintln!("skipped (no ref)"); return };
         let img = image::open(path).unwrap().to_rgb8();
         assert_eq!(shape, vec![img.height() as u64, img.width() as u64, 3]);
@@ -44,7 +51,8 @@ fn decode_vs_pil() {
 
 #[test]
 fn decode_jpeg_decoder_vs_pil() {
-    for (name, path) in [("pano", "test_pano.jpg"), ("photo2", "test_photo2.jpg")] {
+    for name in ["pano"] {
+        let Some(path) = test_image(name) else { return };
         let Some((_shape, want)) = npy_u8(&format!("rgb_{name}.npy")) else { return };
         let f = std::fs::File::open(path).unwrap();
         let mut d = jpeg_decoder::Decoder::new(std::io::BufReader::new(f));

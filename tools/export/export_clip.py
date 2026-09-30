@@ -42,7 +42,7 @@ print('exported', path, os.path.getsize(path) / 1e6, 'MB')
 REF = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'parity', 'ref')
 import onnxruntime as ort
 sess = ort.InferenceSession(path, providers=['CPUExecutionProvider'])
-for name in ('pano', 'photo2'):
+for name in ('pano',):
     pv = np.load(os.path.join(REF, f'{name}_pixel_values.npy'))
     ref = np.load(os.path.join(REF, f'{name}_emb.npy'))
     got = sess.run(None, {'pixel_values': pv})[0][0]

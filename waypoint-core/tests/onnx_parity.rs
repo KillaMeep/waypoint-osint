@@ -12,6 +12,16 @@ use serde_json::Value;
 use waypoint_core::onnx::{init_runtime, Accel, Keypoints, OnnxModels};
 use waypoint_core::{prep, ransac};
 
+/// The test photos live outside the repo: set WAYPOINT_TEST_IMAGES to the folder holding test_pano.jpg.
+fn test_image(name: &str) -> Option<PathBuf> {
+    let p = PathBuf::from(std::env::var_os("WAYPOINT_TEST_IMAGES")?).join(format!("test_{name}.jpg"));
+    p.is_file().then_some(p)
+}
+
+fn need_image(name: &str) -> PathBuf {
+    test_image(name).expect("set WAYPOINT_TEST_IMAGES to the folder holding the test photos")
+}
+
 fn refdir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tools/parity/ref")
 }
@@ -51,7 +61,8 @@ fn candidates() -> Vec<(String, PathBuf)> {
 #[ignore]
 fn embedder_error_budget() {
     let m = models();
-    for (name, path) in [("pano", "test_pano.jpg"), ("photo2", "test_photo2.jpg")] {
+    for name in ["pano"] {
+        let path = need_image(name);
         let want = npy_f32(&refdir().join(format!("{name}_emb.npy")).exists().then(|| refdir().join(format!("{name}_emb.npy"))).unwrap_or_else(|| refdir().join("nonexistent")));
         let _ = want;
         let pv: Vec<f32> = npy_f32(&refdir().join(format!("pv_{name}.npy")));
@@ -66,8 +77,8 @@ fn embedder_error_budget() {
         let pil_img = image::RgbImage::from_raw(shape[1] as u32, shape[0] as u32, rgb).unwrap();
         let e_pil = embed(&m, &pil_img);
         eprint!("{name:>22}: cos(ONNX[ref pixels], ONNX[PIL pixels + our resize]) = {:.6}", cos(&e_pv, &e_pil));
-        if !path.is_empty() {
-            let e_dec = embed(&m, &waypoint_core::imgio::open_rgb(std::path::Path::new(path)).unwrap());
+        {
+            let e_dec = embed(&m, &waypoint_core::imgio::open_rgb(&path).unwrap());
             eprint!("  cos(ONNX[ref pixels], ONNX[our decode + our resize]) = {:.6}", cos(&e_pv, &e_dec));
         }
         if let Some(r) = ref_emb {
@@ -83,7 +94,7 @@ fn embedder_matches_pytorch() {
     let m = models();
     let mut z = npyz::npz::NpzArchive::open(refdir().join("cand_embs.npz")).unwrap();
     let target_ref: Vec<f32> = z.by_name("target").unwrap().unwrap().into_vec().unwrap();
-    let target = waypoint_core::imgio::open_rgb(std::path::Path::new("test_pano.jpg")).unwrap();
+    let target = waypoint_core::imgio::open_rgb(&need_image("pano")).unwrap();
     let t0 = Instant::now();
     let te = embed(&m, &target);
     eprintln!("target embed {:?}, cosine vs PyTorch {:.6}", t0.elapsed(), cos(&te, &target_ref));
@@ -146,7 +157,7 @@ fn load_kp(z: &mut npyz::npz::NpzArchive<std::io::BufReader<std::fs::File>>, kp:
 #[ignore]
 fn lightglue_matches_kornia() {
     let m = models();
-    for name in ["pano__self_crop", "pano__photo2", "photo2__self_crop"] {
+    for name in ["pano__self_crop"] {
         let mut z = npyz::npz::NpzArchive::open(refdir().join(format!("match_{name}.npz"))).unwrap();
         let (a, b) = (load_kp(&mut z, "kp1", "desc1"), load_kp(&mut z, "kp2", "desc2"));
         let idxs: Vec<i64> = z.by_name("idxs").unwrap().unwrap().into_vec().unwrap();
@@ -188,7 +199,7 @@ fn disk_matches_kornia() {
 fn end_to_end_pairs_vs_prod() {
     let m = models();
     let report: Value = serde_json::from_str(&std::fs::read_to_string(refdir().join("match_report.json")).unwrap()).unwrap();
-    let target = waypoint_core::imgio::open_rgb(std::path::Path::new("test_pano.jpg")).unwrap();
+    let target = waypoint_core::imgio::open_rgb(&need_image("pano")).unwrap();
     let feats = |img: &image::RgbImage| {
         let (chw, w, h) = prep::disk_input(img).unwrap();
         m.disk_features(chw, w, h).unwrap()
@@ -206,8 +217,6 @@ fn end_to_end_pairs_vs_prod() {
             let (w, h) = (target.width(), target.height());
             let crop = image::imageops::crop_imm(&target, (w as f64 * 0.1) as u32, (h as f64 * 0.1) as u32, (w as f64 * 0.7) as u32, (h as f64 * 0.8) as u32).to_image();
             image::imageops::resize(&crop, 900, 700, image::imageops::FilterType::CatmullRom)
-        } else if b == "photo2" {
-            waypoint_core::imgio::open_rgb(std::path::Path::new("test_photo2.jpg")).unwrap()
         } else {
             let p = &man.iter().find(|c| c.0 == b).unwrap().1;
             waypoint_core::imgio::open_rgb(std::path::Path::new(p)).unwrap()

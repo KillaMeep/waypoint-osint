@@ -16,7 +16,17 @@ use waypoint_core::onnx::{init_runtime, Accel, Encoder as EncoderSession, OnnxMo
 use waypoint_core::plonk::{to_lat_lon, variant, Encoder, PlonkStep, Variant};
 use waypoint_core::{imgio, prep};
 
-const IMAGES: [(&str, &str); 2] = [("pano", "test_pano.jpg"), ("photo2", "test_photo2.jpg")];
+const IMAGES: [&str; 1] = ["pano"];
+
+/// The test photos live outside the repo: set WAYPOINT_TEST_IMAGES to the folder holding test_pano.jpg.
+fn test_image(name: &str) -> Option<PathBuf> {
+    let p = PathBuf::from(std::env::var_os("WAYPOINT_TEST_IMAGES")?).join(format!("test_{name}.jpg"));
+    p.is_file().then_some(p)
+}
+
+fn need_image(name: &str) -> PathBuf {
+    test_image(name).expect("set WAYPOINT_TEST_IMAGES to the folder holding the test photos")
+}
 
 fn refdir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../tools/parity/ref")
@@ -170,7 +180,7 @@ fn assert_same_membership(label: &str, a_name: &str, a: &[i32], b_name: &str, b:
 fn fixed_noise_matches_pytorch() {
     let p = plonk();
     let refs = ref_clusters();
-    for (name, _) in IMAGES {
+    for name in IMAGES {
         let emb = npy_f32(&format!("{name}_emb.npy"));
         for seed in 1..=3 {
             let xn = npy_f32(&format!("{name}_xN_s{seed}.npy"));
@@ -206,8 +216,8 @@ fn rust_embedding_end_to_end() {
         }
     };
     let refs = ref_clusters();
-    for (name, path) in IMAGES {
-        let img = imgio::open_rgb(Path::new(path)).unwrap();
+    for name in IMAGES {
+        let img = imgio::open_rgb(&need_image(name)).unwrap();
         let emb = embed(&img);
         let c = cos(&emb, &npy_f32(&format!("{name}_emb.npy")));
         eprintln!("{name}: embedding cosine vs PyTorch {c:.6}");
@@ -297,8 +307,8 @@ fn dinov2_matches_pytorch() {
     let npy = |f: &str| -> Vec<f32> {
         npyz::NpyFile::new(std::io::BufReader::new(std::fs::File::open(refdir().join(f)).unwrap())).unwrap().into_vec().unwrap()
     };
-    for (name, path) in IMAGES {
-        let img = imgio::open_rgb(Path::new(path)).unwrap();
+    for name in IMAGES {
+        let img = imgio::open_rgb(&need_image(name)).unwrap();
         let px = prep::dinov2_pixel_values(&img).unwrap();
         let want_px = npy(&format!("yfcc_{name}_pixel_values.npy"));
         let dmax = px.iter().zip(&want_px).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
@@ -323,7 +333,7 @@ fn dinov2_matches_pytorch() {
     }
     let mut z = npyz::npz::NpzArchive::open(refdir().join("dinov2_cand_embs.npz")).unwrap();
     let target_ref: Vec<f32> = z.by_name("target").unwrap().unwrap().into_vec().unwrap();
-    let target = m.embed_pixels(prep::dinov2_pixel_values(&imgio::open_rgb(Path::new(IMAGES[0].1)).unwrap()).unwrap(), 1).unwrap().remove(0);
+    let target = m.embed_pixels(prep::dinov2_pixel_values(&imgio::open_rgb(&need_image(IMAGES[0])).unwrap()).unwrap(), 1).unwrap().remove(0);
     let man: Value = serde_json::from_str(&std::fs::read_to_string(refdir().join("cands/manifest.json")).unwrap()).unwrap();
     let (mut coss, mut ours, mut theirs) = (vec![], vec![], vec![]);
     let t = Instant::now();

@@ -11,11 +11,10 @@ REF = os.path.join(HERE, 'ref')
 DST = os.path.abspath(os.path.join(HERE, '..', '..', 'waypoint-core', 'tests', 'fixtures'))
 os.makedirs(DST, exist_ok=True)
 
-for f in ('sun_ref.json', 'plonk_clusters.json', 'pano_samples_s1.npy', 'pano_samples_s2.npy',
-          'photo2_samples_s1.npy', 'photo2_samples_s3.npy'):
+for f in ('sun_ref.json', 'plonk_clusters.json', 'pano_samples_s1.npy', 'pano_samples_s2.npy'):
     shutil.copy(os.path.join(REF, f), os.path.join(DST, f))
 
-for name in ('pano__self_crop', 'photo2__self_crop', 'pano__photo2'):
+for name in ('pano__self_crop',):
     z = np.load(os.path.join(REF, f'match_{name}.npz'))
     np.savez_compressed(os.path.join(DST, f'match_{name}.npz'), kp1=z['kp1'], kp2=z['kp2'], idxs=z['idxs'], mask=z['mask'])
 

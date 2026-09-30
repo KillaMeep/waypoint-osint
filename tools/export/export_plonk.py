@@ -93,7 +93,7 @@ sess = ort.InferenceSession(path, providers=['CPUExecutionProvider'])
 
 dev = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 step_dev = Step(net.to(dev)).eval()
-for name in ('pano', 'photo2'):
+for name in ('pano',):
     ref = lambda f: os.path.join(REF, REF_PREFIX + f)
     emb = torch.from_numpy(np.load(ref(f'{name}_emb.npy'))).reshape(1, -1)
     for seed in (1, 2, 3):

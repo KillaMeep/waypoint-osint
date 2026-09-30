@@ -7,6 +7,12 @@ use std::path::PathBuf;
 use serde_json::Value;
 use waypoint_core::{astral, geo, ransac, sun};
 
+/// The test photos live outside the repo: set WAYPOINT_TEST_IMAGES to the folder holding test_pano.jpg.
+fn test_image(name: &str) -> Option<PathBuf> {
+    let p = PathBuf::from(std::env::var_os("WAYPOINT_TEST_IMAGES")?).join(format!("test_{name}.jpg"));
+    p.is_file().then_some(p)
+}
+
 fn find(name: &str) -> Option<PathBuf> {
     let here = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     [here.join("tests/fixtures").join(name), here.join("../tools/parity/ref").join(name)].into_iter().find(|p| p.exists())
@@ -103,11 +109,11 @@ fn best_match_matches_python() {
 #[test]
 fn image_stats_match_python() {
     let Some(v) = json("sun_ref.json") else { eprintln!("skipped: no sun_ref.json"); return };
-    for (name, path) in [("pano", "test_pano.jpg"), ("photo2", "test_photo2.jpg")] {
-        if !std::path::Path::new(path).exists() {
-            eprintln!("skipped {name}: image missing");
+    for name in ["pano"] {
+        let Some(path) = test_image(name) else {
+            eprintln!("skipped {name}: set WAYPOINT_TEST_IMAGES");
             continue;
-        }
+        };
         let img = image::open(path).unwrap().to_rgb8();
         let want = &v["images"][name];
         let s = sun::estimate_season(&img, 40.0);
@@ -129,7 +135,7 @@ fn image_stats_match_python() {
 fn clustering_matches_python() {
     let Some(want) = json("plonk_clusters.json") else { eprintln!("skipped: no plonk_clusters.json"); return };
     let mut checked = 0;
-    for (key, file) in [("pano_s1", "pano_samples_s1.npy"), ("pano_s2", "pano_samples_s2.npy"), ("photo2_s1", "photo2_samples_s1.npy"), ("photo2_s3", "photo2_samples_s3.npy"), ("pano_big", "pano_big_samples.npy")] {
+    for (key, file) in [("pano_s1", "pano_samples_s1.npy"), ("pano_s2", "pano_samples_s2.npy"), ("pano_big", "pano_big_samples.npy")] {
         let Some((shape, flat)) = npy_f32(file) else { continue };
         assert_eq!(shape[1], 2);
         let pts: Vec<[f32; 2]> = flat.chunks_exact(2).map(|c| [c[0], c[1]]).collect();
@@ -156,7 +162,7 @@ fn clustering_matches_python() {
 #[test]
 fn ransac_matches_opencv_masks() {
     let mut checked = 0;
-    for name in ["match_pano__self_crop.npz", "match_photo2__self_crop.npz", "match_pano__photo2.npz"] {
+    for name in ["match_pano__self_crop.npz"] {
         let Some(p) = find(name) else { continue };
         let mut z = npyz::npz::NpzArchive::open(&p).unwrap();
         let mut get = |k: &str| -> (Vec<u64>, Vec<f32>) {

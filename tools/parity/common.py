@@ -14,10 +14,9 @@ ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))
 sys.path.insert(0, os.path.join(HERE, 'reference_pipeline'))  # the original PyTorch pipeline
 REF = os.path.join(HERE, 'ref')
 os.makedirs(REF, exist_ok=True)
-IMAGES = {
-    'pano': 'test_pano.jpg',
-    'photo2': 'test_photo2.jpg',
-}
+# The test photos live outside the repo: set WAYPOINT_TEST_IMAGES to the folder holding test_pano.jpg.
+IMAGE_DIR = os.environ.get('WAYPOINT_TEST_IMAGES', '')
+IMAGES = {'pano': os.path.join(IMAGE_DIR, 'test_pano.jpg')}
 SEEDS = [1, 2, 3]
 
 

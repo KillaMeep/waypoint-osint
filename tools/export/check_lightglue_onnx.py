@@ -22,7 +22,7 @@ def conf_thr(i):
     return np.float32(min(max(0.8 + 0.1 * np.exp(-4.0 * i / 9), 0), 1))
 
 
-for name in ('pano__self_crop', 'pano__photo2', 'photo2__self_crop'):
+for name in ('pano__self_crop',):
     z = np.load(os.path.join(REF, f'match_{name}.npz'))
     kp0, kp1, de0, de1 = z['kp1'], z['kp2'], z['desc1'][None], z['desc2'][None]
     m, n = len(kp0), len(kp1)

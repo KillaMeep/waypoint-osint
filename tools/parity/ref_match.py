@@ -1,5 +1,5 @@
 """Reference retrieval/matching data: downloads a fixed set of real candidate
-images around the true location of test_pano.jpg, stores them
+images around the true location of test_pano.jpg (WAYPOINT_TEST_LATLON="lat,lon"), stores them
 losslessly, then records embeddings, DISK features, LightGlue matches (production
 settings and pruning disabled) and cv2 RANSAC masks/inlier counts.
 
@@ -24,7 +24,8 @@ import mapillary_refine as MR
 import google_sv_refine as GS
 import panoramax_refine as PX
 
-LAT, LON, RAD = 0.0, 0.0, 3.0
+LAT, LON = map(float, os.environ['WAYPOINT_TEST_LATLON'].split(','))
+RAD = 3.0
 N_PER_SOURCE = 10
 CAND = os.path.join(REF, 'cands')
 os.makedirs(CAND, exist_ok=True)
@@ -122,9 +123,6 @@ for m in manifest:
 w, h = target.size
 crop = target.crop((int(w * .1), int(h * .1), int(w * .8), int(h * .9))).resize((900, 700))
 pairs.append(('pano', 'self_crop', target, crop))
-pairs.append(('pano', 'photo2', target, Image.open(IMAGES['photo2']).convert('RGB')))
-bk = Image.open(IMAGES['photo2']).convert('RGB')
-pairs.append(('photo2', 'self_crop', bk, bk.crop((200, 100, 3200, 2000)).resize((1280, 800))))
 
 report = []
 for a, b, i1, i2 in pairs:

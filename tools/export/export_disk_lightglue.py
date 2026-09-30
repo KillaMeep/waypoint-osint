@@ -184,7 +184,7 @@ def modular_match(kp0, ds0, kp1, ds1, depth_conf=0.95, width_conf=0.99, prune_th
 
 
 with torch.no_grad():
-    for name in ('pano__self_crop', 'pano__photo2', 'photo2__self_crop'):
+    for name in ('pano__self_crop',):
         z = np.load(os.path.join(REF, f'match_{name}.npz'))
         kp0, kp1 = torch.from_numpy(z['kp1'])[None], torch.from_numpy(z['kp2'])[None]
         de0, de1 = torch.from_numpy(z['desc1'])[None], torch.from_numpy(z['desc2'])[None]

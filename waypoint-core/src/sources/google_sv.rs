@@ -236,6 +236,6 @@ mod tests {
         assert_eq!(p.len(), 1);
         assert_eq!(p[0].panoid, "TestPanoId_0123456789a");
         assert!((p[0].lat - 48.8583701).abs() < 1e-9);
-        assert!((p[0].lon + 2.2944813).abs() < 1e-9);
+        assert!((p[0].lon - 2.2944813).abs() < 1e-9);
     }
 }

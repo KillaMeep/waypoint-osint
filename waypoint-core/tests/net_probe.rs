@@ -6,7 +6,7 @@ use waypoint_core::net;
 #[ignore]
 fn gsv_tile_probe() {
     let agent = net::agent(4, 10);
-    let panoid = "TestPanoId_0123456789a";
+    let Ok(panoid) = std::env::var("WAYPOINT_TEST_PANOID") else { eprintln!("skipped: set WAYPOINT_TEST_PANOID"); return };
     let url = format!("https://streetviewpixels-pa.googleapis.com/v1/tile?cb_client=maps_sv.tactile&panoid={panoid}&x=0&y=0&zoom=2&nbt=1&fover=2");
     let hdrs = [
         ("origin", "https://www.google.com"),

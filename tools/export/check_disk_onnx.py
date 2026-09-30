@@ -1,4 +1,5 @@
 """Compare the exported DISK UNet (onnxruntime) with the recorded PyTorch outputs."""
+import json
 import os
 import sys
 
@@ -8,7 +9,7 @@ import onnxruntime as ort
 onnx_dir = sys.argv[1]
 REF = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'parity', 'ref')
 sess = ort.InferenceSession(os.path.join(onnx_dir, 'disk_unet.onnx'), providers=['CPUExecutionProvider'])
-for name in ('pano', 'photo2', 'mly_000000000000000'):
+for name in json.load(open(os.path.join(REF, 'prep_index.json'))):
     x = np.load(os.path.join(REF, f'disk_in_{name}.npy'))
     z = np.load(os.path.join(REF, f'disk_out_{name}.npz'))
     out = sess.run(None, {'image': x})[0]
